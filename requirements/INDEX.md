@@ -20,9 +20,7 @@ requirements/active/
 
 Contains approved requirements that are part of the current implementation scope.
 
-Active requirements should be considered binding for ongoing development.
-
----
+Active requirements are binding for ongoing development.
 
 ### Backlog
 
@@ -34,8 +32,6 @@ Contains ideas or requirements that may be implemented later but are not current
 
 Backlog items must not be treated as active requirements.
 
----
-
 ### Archive
 
 Location:
@@ -44,9 +40,7 @@ requirements/archive/
 
 Contains requirements that were completed as part of a released version or were otherwise closed.
 
-Archived requirements represent historical project state.
-
-They should normally not be modified after release.
+Archived requirements represent historical project state and should normally not be modified after release.
 
 If released behavior needs to change, create a new requirement instead of rewriting the archived requirement.
 
@@ -54,9 +48,35 @@ If released behavior needs to change, create a new requirement instead of rewrit
 
 ## Active Requirements
 
-No active requirement documents have been created yet.
+The following requirements are approved for the initial v1.0 implementation:
 
-The initial requirements for the first implementation will be added before development begins.
+- REQ-001 — Static File Serving
+  - `active/REQ-001-static-file-serving.md`
+
+- REQ-002 — Dynamic Port Allocation
+  - `active/REQ-002-dynamic-port-allocation.md`
+
+- REQ-003 — JSON Persistence API
+  - `active/REQ-003-json-api.md`
+
+- REQ-004 — JavaScript Client API
+  - `active/REQ-004-javascript-client-api.md`
+
+- REQ-005 — Example and Template Applications
+  - `active/REQ-005-example-and-template.md`
+
+- REQ-006 — Startup and Browser Launch
+  - `active/REQ-006-startup-and-browser-launch.md`
+
+- REQ-007 — Error Handling and File Permissions
+  - `active/REQ-007-error-handling-and-file-permissions.md`
+
+- REQ-008 — Runtime and Distribution
+  - `active/REQ-008-runtime-and-distribution.md`
+
+Implementation tasks derived from these requirements are maintained in:
+
+tasks/ACTIVE.md
 
 ---
 
@@ -70,15 +90,21 @@ No backlog requirement documents have been created yet.
 
 No requirements have been archived yet.
 
+The planned archive location for the first release is:
+
+requirements/archive/v1.0/
+
+Requirements must only be moved there after version 1.0 has actually been released.
+
 ---
 
 ## Requirement Naming
 
-Requirement documents should use a stable identifier and a short descriptive name.
+Requirement documents use a stable identifier and a short descriptive name.
 
-Recommended format:
+Format:
 
-REQ-001-short-description.md
+REQ-<number>-<short-description>.md
 
 Examples:
 
@@ -86,7 +112,7 @@ REQ-001-static-file-serving.md
 REQ-002-dynamic-port-allocation.md
 REQ-003-json-api.md
 
-Requirement identifiers should not be reused.
+Requirement identifiers must not be reused.
 
 ---
 
@@ -102,10 +128,10 @@ Each requirement should contain at least:
 - Acceptance criteria
 - Relevant constraints
 - Related decisions
-- Related tasks
-- Target release, if known
+- Related tasks or a reference to the task tracker
+- Target release
 
-Requirements should describe what the system must provide.
+Requirements describe what the system must provide.
 
 Detailed implementation choices should normally remain in architecture or decision documents unless they are themselves part of the requirement.
 
@@ -130,7 +156,7 @@ Example:
 
 requirements/archive/v1.0/
 
-The requirement index should be updated whenever requirement status changes.
+This index must be updated whenever the status or location of a requirement changes.
 
 ---
 
@@ -140,8 +166,9 @@ Before implementing a task:
 
 1. Read this index.
 2. Identify the relevant active requirements.
-3. Read only those detailed requirement documents needed for the task.
-4. Check related architecture and decision documents.
-5. Do not routinely read archived requirements unless historical context is required.
+3. Read only the detailed requirement documents required for the task.
+4. Check the related architecture and decision documents.
+5. Check `tasks/ACTIVE.md` for the concrete implementation task.
+6. Do not routinely read archived requirements unless historical context is required.
 
 This approach keeps the working context small while preserving complete project history.
