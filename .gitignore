@@ -25,4 +25,6 @@ Desktop.ini
 .env
 .env.*
 !.env.example
-EOF
+
+# Mini Server runtime state
+.runtime/

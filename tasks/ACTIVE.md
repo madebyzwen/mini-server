@@ -76,24 +76,131 @@ Related requirements:
 
 Description:
 
-Implement startup of the HTTP server on:
+Implement dynamic loopback server startup and the per-installation single-instance mechanism defined by D-018.
 
-127.0.0.1
+Each Mini Server installation must maintain runtime state outside the web root.
 
-using TCP port:
+The intended runtime location is:
 
-0
+    <installation-root>/.runtime/
 
-The operating system must assign an available port automatically.
+with runtime files such as:
 
-After startup, the actual assigned port must be determined from the running server instance.
+    <installation-root>/.runtime/instance.lock
+    <installation-root>/.runtime/instance.json
+
+The `.runtime/` directory may be created when required.
+
+It must not be located below `www/` and must never be exposed through normal static file serving.
+
+### Instance Lock
+
+Before starting the HTTP server, the process must attempt to acquire an exclusive instance lock for the current Mini Server installation.
+
+The active process-owned lock is authoritative for determining whether another Mini Server server process is already running for that installation.
+
+A runtime state file by itself must not be treated as proof that an instance is active.
+
+The active server process must retain ownership of the lock for its entire lifetime.
+
+When the process terminates, the operating system must release the process-owned lock.
+
+### New Server Instance
+
+If the installation lock can be acquired:
+
+1. Acquire the exclusive instance lock.
+2. Invalidate stale runtime state from a previous execution.
+3. Bind the HTTP server exclusively to:
+
+       127.0.0.1
+
+4. Request TCP port:
+
+       0
+
+5. Allow the operating system to select an available local TCP port.
+6. Retrieve the actual assigned port from the running server instance.
+7. Confirm that the HTTP server is ready to accept requests.
+8. Publish the assigned port in the current runtime state.
+9. Continue running while retaining the instance lock.
+
+Mini Server must not:
+
+- Use a permanently configured TCP port
+- Scan a range of ports looking for an available port
+- Bind the normal HTTP listener to external interfaces
+- Publish a guessed or not-yet-active port
+
+### Existing Server Instance
+
+If the installation lock cannot be acquired because another Mini Server process already owns it, the new process must not start another HTTP server.
+
+Instead it must:
+
+1. Recognize the start as a repeated start.
+2. Obtain valid runtime state from the active instance.
+3. Retrieve the active server's assigned TCP port.
+4. Make that existing port available to the browser-launch logic.
+5. Terminate without becoming another server process.
+
+The repeated-start path must therefore reuse the existing Mini Server instance.
+
+### Startup Race
+
+A second process may detect the active instance lock before the first process has finished publishing its runtime state.
+
+In this situation the second process must not start another server.
+
+It may wait and retry for valid runtime state for a short bounded period.
+
+If the lock remains owned but valid runtime state cannot be obtained within that period, startup must fail with a clear diagnostic result.
+
+The exact retry interval and timeout may be chosen during implementation, but the wait must remain bounded and must preserve the single-instance guarantee.
+
+### Stale Runtime State
+
+A stale runtime state file may remain after abnormal process termination.
+
+If the installation lock can be acquired, stale state must not prevent a new server from starting.
+
+After acquiring the lock, the new process must invalidate stale state before starting and must publish fresh state only after its own server has successfully obtained its assigned port.
+
+An old stored port must never be reused solely because it remains in `instance.json`.
+
+### Persistence Safety
+
+Only one Mini Server process may normally operate on the persistence files of one installation.
+
+The single-instance mechanism therefore prevents separate server processes from concurrently modifying:
+
+    www/<site>/data/data.json
+
+Concurrency between requests handled inside the one active server process remains the responsibility of the persistence implementation.
 
 Acceptance:
 
-- The server binds to 127.0.0.1.
-- Port 0 is requested.
-- The assigned runtime port can be retrieved.
+- The server binds exclusively to `127.0.0.1`.
+- TCP port `0` is requested for every newly started server instance.
+- The operating system assigns the runtime port.
+- The actual assigned port can be retrieved from the running server.
+- No fixed server port is required.
 - No manual port scanning is used.
+- Runtime state is stored outside `www/`.
+- `.runtime/` can be created when required.
+- An exclusive per-installation instance lock is acquired before starting a new server.
+- The active server retains the instance lock for its lifetime.
+- Only one server process runs for one installation at a time.
+- Independent Mini Server installations may still run simultaneously.
+- Stale runtime state is invalidated before fresh runtime state is published.
+- The assigned port is published only after successful server startup.
+- A runtime state file alone is not treated as proof of an active instance.
+- A repeated start does not create another HTTP server.
+- A repeated start can obtain the active instance's runtime port.
+- A startup race does not result in a competing server process.
+- Failure to obtain valid runtime state during a repeated-start race produces a diagnostic error.
+- Abnormal process termination does not permanently block future startup.
+- The process-owned instance lock is released when the owning process terminates.
 - Startup failures are reported clearly.
 
 ---
@@ -344,41 +451,6 @@ Acceptance:
 - Requests are scoped to the site namespace addressed by the URL.
 - Clients cannot override the derived persistence location with arbitrary filesystem paths.
 - Failed server operations never return a successful HTTP status.
-
----
-
-## T-006 — Implement HTTP API Endpoints
-
-Status: Planned
-
-Related requirements:
-
-- REQ-003
-- REQ-007
-
-Description:
-
-Implement the central server-side API endpoints:
-
-/<site>/api/read?section=<name>
-
-/<site>/api/readAll
-
-/<site>/api/write
-
-/<site>/api/remove?section=<name>
-
-/<site>/api/clear
-
-All sites must use the same central Java implementation.
-
-Acceptance:
-
-- All required API operations are available.
-- Requests are scoped to the correct site.
-- Invalid requests return appropriate errors.
-- Server failures do not return successful responses.
-- API responses do not expose unnecessary filesystem details.
 
 ---
 
@@ -826,18 +898,136 @@ Related requirements:
 
 Description:
 
-After successful server startup, construct the local application URL using the assigned runtime port and open it in Microsoft Edge.
+Implement Microsoft Edge launch behavior for both a newly started Mini Server instance and a repeated start of an already running installation.
 
-The browser must only be launched after the server is ready.
+The browser URL must always be constructed from the actual active Mini Server instance.
+
+The URL format is:
+
+    http://127.0.0.1:<active-port><start-target>
+
+The configured start target identifies the application path that should be opened, for example:
+
+    /example/
+
+Mini Server must never construct the browser URL using a guessed, fixed, stale, or scanned TCP port.
+
+### First Start
+
+After a new Mini Server server instance has:
+
+1. Acquired the installation instance lock
+2. Bound successfully to `127.0.0.1`
+3. Requested TCP port `0`
+4. Obtained the actual operating-system-assigned port
+5. Become ready to accept HTTP requests
+6. Published valid runtime state
+
+the browser-launch logic must construct the local application URL using that assigned port.
+
+Example:
+
+    http://127.0.0.1:51847/example/
+
+Microsoft Edge must then be opened with that URL.
+
+Edge must not be opened before the active server is ready.
+
+### Repeated Start
+
+When startup detects that the same Mini Server installation already has an active server instance, no second HTTP server is started.
+
+The repeated-start process obtains the active server port from valid runtime state.
+
+It then constructs the browser URL using:
+
+- `127.0.0.1`
+- The port of the existing active Mini Server instance
+- The configured start target
+
+For example, if the active instance uses port:
+
+    51847
+
+the repeated start opens:
+
+    http://127.0.0.1:51847/example/
+
+The repeated-start process must not:
+
+- Request another server port
+- Start another HTTP server
+- Replace the active instance's runtime state
+- Assume that a stale state file represents a running server
+
+After requesting Edge to open the existing Mini Server URL, the repeated-start process terminates.
+
+### Microsoft Edge
+
+Mini Server v1.0 uses the normally installed Microsoft Edge browser for the standard Windows startup experience.
+
+Mini Server must not require an embedded or dedicated browser.
+
+Launching Mini Server must not prevent the user from using Edge normally for unrelated websites, tabs, or windows.
+
+Mini Server does not need to control whether Edge opens:
+
+- A new tab
+- A new window
+- An existing Edge process
+- A new Edge process
+
+That behavior may be determined by Microsoft Edge and Windows.
+
+The Mini Server responsibility is limited to requesting that the correct local URL be opened.
+
+### Browser Launch Failure
+
+Failure to launch Microsoft Edge must not corrupt or invalidate an otherwise successfully running Mini Server instance.
+
+If the server has started successfully but Edge cannot be opened:
+
+- The server may continue running
+- Its runtime state remains valid
+- Its active port remains available
+- A clear diagnostic message must be produced
+- The complete local URL must be made available so that the user can open it manually
+
+A browser-launch failure must not cause Mini Server to report an incorrect server port or modify persistence data.
+
+### Server Lifetime
+
+The Edge process is not the owner of the Mini Server server lifetime.
+
+Closing:
+
+- The Mini Server tab
+- An Edge window
+- All Edge windows
+
+must not intentionally terminate the active Mini Server Java process.
+
+A later desktop start can therefore reopen the already running Mini Server instance using the repeated-start behavior defined by D-018.
 
 Acceptance:
 
-- The generated URL contains 127.0.0.1.
-- The generated URL contains the actual assigned port.
-- The configured start application is included in the URL.
-- Edge is opened only after successful server startup.
-- Failure to launch Edge does not corrupt or crash the running server.
-- The generated local URL remains available for manual use if browser launch fails.
+- The generated URL uses `127.0.0.1`.
+- The generated URL contains the actual active Mini Server port.
+- The configured start target is included in the URL.
+- A newly started server is ready before Edge is opened.
+- A first start uses the newly assigned operating-system-selected port.
+- A repeated start uses the existing active server's port.
+- A repeated start does not start another HTTP server.
+- A repeated start does not request another TCP port.
+- A repeated start opens the existing Mini Server URL in Edge.
+- The repeated-start process terminates after requesting the browser launch.
+- A stale state file alone is not used to select a browser URL.
+- No fixed, guessed, or scanned port is used for browser launch.
+- Mini Server uses the normally installed Microsoft Edge browser.
+- Mini Server does not require control over Edge tab or window reuse behavior.
+- Failure to launch Edge does not corrupt or terminate an otherwise successfully running server.
+- The complete local URL remains available for manual use if browser launch fails.
+- Closing Edge does not intentionally terminate Mini Server.
 
 ---
 

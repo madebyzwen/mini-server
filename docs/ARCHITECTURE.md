@@ -22,25 +22,30 @@ The server itself does not interpret application-specific data.
 
 The basic runtime structure is:
 
-```text
-mini-server/
-├── server/
-│   └── ...
-├── miniweb-template.zip
-└── www/
-    ├── _shared/
-    │   └── mini-api.js
-    ├── example/
-    │   ├── index.html
-    │   ├── assets/
-    │   └── data/
-    │       └── data.json
-    └── another-app/
-        ├── index.html
-        ├── assets/
-        └── data/
-            └── data.json
-```
+    mini-server/
+    ├── .runtime/
+    │   ├── instance.lock
+    │   └── instance.json
+    ├── server/
+    │   └── ...
+    ├── miniweb-template.zip
+    └── www/
+        ├── _shared/
+        │   └── mini-api.js
+        ├── example/
+        │   ├── index.html
+        │   ├── assets/
+        │   └── data/
+        │       └── data.json
+        └── another-app/
+            ├── index.html
+            ├── assets/
+            └── data/
+                └── data.json
+
+The `.runtime/` directory is created and managed as local runtime state. It is outside the web root and must never be exposed through normal static file serving.
+
+The runtime files represent the current installation instance state. `instance.lock` is used for exclusive instance ownership, while `instance.json` contains runtime information such as the currently assigned TCP port.
 
 The final Java source layout may differ from the simplified `server/` representation above and will be defined by the implementation structure.
 
@@ -542,11 +547,123 @@ The template is intended to remain a clean starting point, while the `example` a
 
 ## Network Boundary
 
-The server is intended for trusted local or internal environments.
+Mini Server binds its HTTP server exclusively to:
 
-It is not designed as a public internet-facing web server.
+    127.0.0.1
 
-The exact network binding, port allocation, launch behavior, and related runtime constraints are defined in the project decisions and requirements rather than duplicated here.
+A newly started server requests TCP port:
+
+    0
+
+The operating system selects an available local port.
+
+Mini Server does not scan for free ports and does not use a permanently configured server port.
+
+The server is intended as a local per-user service and is not designed as a public internet-facing web server.
+
+## Startup and Browser Launch
+
+Only one Mini Server server process may run for one installation at a time.
+
+Independent Mini Server installations may run simultaneously.
+
+### Instance State
+
+Each installation maintains runtime state outside the web root.
+
+The intended location is:
+
+    <installation-root>/.runtime/
+
+For example:
+
+    <installation-root>/.runtime/instance.lock
+    <installation-root>/.runtime/instance.json
+
+The exclusive instance lock determines whether the installation already has a running Mini Server process.
+
+The runtime state contains at least the TCP port assigned to the active server after successful startup.
+
+Runtime state must never be stored below `www/` or served as normal web content.
+
+A state file by itself is not proof that a server is still running.
+
+### First Start
+
+When no server instance currently owns the installation lock:
+
+1. Mini Server acquires the exclusive installation lock.
+2. Stale runtime state is invalidated.
+3. The HTTP server binds to `127.0.0.1` and requests port `0`.
+4. The operating system assigns an available local TCP port.
+5. Mini Server obtains the actual assigned port.
+6. The current port is published in the runtime state.
+7. The server is considered ready.
+8. Microsoft Edge is opened with the assigned port and configured application start target.
+9. The Java process remains running as the active Mini Server instance.
+
+For example:
+
+    http://127.0.0.1:51847/example/
+
+Edge must not be opened using a guessed or predetermined port.
+
+### Repeated Start
+
+If the same installation is started again while its Mini Server process is already running, the second process does not start another HTTP server.
+
+Instead it:
+
+1. Detects that the installation lock is already owned.
+2. Reads the runtime state of the active instance.
+3. Obtains the existing server port.
+4. Opens Microsoft Edge using the existing Mini Server URL.
+5. Terminates.
+
+A repeated start therefore reuses the active server instance instead of creating another process that could compete for the same persistence files.
+
+### Startup Race
+
+A repeated start may occur after the first process has acquired the installation lock but before it has published valid runtime state.
+
+During this startup phase, the second process must not start another server.
+
+It may wait for valid runtime state for a short bounded period.
+
+If the active lock remains owned but valid state cannot be obtained, the repeated start fails with a diagnostic message instead of creating a competing server instance.
+
+### Stale Runtime State
+
+Runtime state may remain after an abnormal process termination.
+
+If no process owns the installation lock, a new Mini Server process may start normally.
+
+After acquiring the lock, the new process invalidates stale state and publishes its own state only after successful server startup.
+
+An old stored port is never reused solely because it remains in a runtime state file.
+
+### Server Lifetime
+
+The Mini Server Java process runs independently of Microsoft Edge.
+
+Closing a Mini Server tab, an Edge window, or all Edge windows does not intentionally stop the server.
+
+The server continues running until its Java process terminates, for example because of:
+
+- User logoff
+- Operating-system shutdown
+- Explicit process termination
+- Fatal process failure
+
+Mini Server v1.0 does not provide a browser-accessible HTTP shutdown endpoint.
+
+### Persistence Concurrency
+
+The per-installation single-instance rule prevents separate Mini Server processes from concurrently modifying the same installation's persistence files.
+
+Concurrency between requests handled inside the active server process must still be managed by the persistence implementation itself.
+
+Detailed startup and lifetime behavior is defined by D-018 and REQ-006.
 
 ## Architectural Principles
 

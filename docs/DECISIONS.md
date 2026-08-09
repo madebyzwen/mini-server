@@ -864,6 +864,185 @@ A consistent JSON error structure gives MiniApi and application developers a pre
 
 ---
 
+## D-018 — Single Running Instance and Server Lifetime
+
+### Decision
+
+Mini Server allows only one running server instance per installation at a time.
+
+Different independent Mini Server installations may run simultaneously.
+
+Each installation manages its own instance state and continues to use an operating-system-assigned dynamic TCP port.
+
+### Dynamic Port
+
+When a new Mini Server instance starts, it binds exclusively to:
+
+    127.0.0.1
+
+and requests TCP port:
+
+    0
+
+The operating system selects an available local port.
+
+Mini Server must not scan for free ports and must not depend on a permanently configured port.
+
+After the server has successfully started, the actually assigned port is stored in the installation's local runtime state.
+
+### Instance Lock
+
+Before starting the HTTP server, Mini Server must acquire an exclusive instance lock for the current installation.
+
+The lock identifies whether another Mini Server process is already responsible for the same installation and persistence data.
+
+The runtime lock and instance state must be stored outside:
+
+    www/
+
+They must never be exposed as normal static web content.
+
+The intended runtime location is:
+
+    <installation-root>/.runtime/
+
+with separate lock and state information, for example:
+
+    <installation-root>/.runtime/instance.lock
+    <installation-root>/.runtime/instance.json
+
+The exact internal representation of the state file may remain an implementation detail, but it must contain at least the currently assigned TCP port.
+
+### First Start
+
+When no other instance owns the installation lock:
+
+1. The new process acquires the exclusive instance lock.
+2. Any stale previous runtime state is invalidated.
+3. The HTTP server binds to `127.0.0.1` using port `0`.
+4. The operating system assigns an available port.
+5. Mini Server reads the assigned port from the running server.
+6. The current port is written to the runtime state.
+7. The server is considered ready.
+8. Microsoft Edge is opened with the configured Mini Server start URL using the actual assigned port.
+
+For example:
+
+    http://127.0.0.1:51847/example/
+
+The concrete application path may depend on the configured distribution start target.
+
+### Repeated Start
+
+If the user starts the same Mini Server installation again while its server is already running, the second process must not start another HTTP server.
+
+Instead, the second process:
+
+1. Detects that the exclusive instance lock is already owned.
+2. Reads the current runtime state.
+3. Obtains the port of the already running Mini Server instance.
+4. Opens Microsoft Edge using that existing server address.
+5. Terminates without becoming another server process.
+
+For example, when the existing instance is using:
+
+    127.0.0.1:51847
+
+a repeated start reuses that port instead of requesting another one.
+
+### Startup Race Handling
+
+A repeated start may occur while the first process has already acquired the instance lock but has not yet finished starting the HTTP server.
+
+The second process must not interpret missing or incomplete runtime state during this short startup phase as permission to start another server.
+
+It may wait and retry for a short bounded period for valid runtime state to become available.
+
+If valid runtime state cannot be obtained while the instance lock remains owned, the second process must fail with a clear diagnostic message rather than starting a competing server instance.
+
+### Stale Runtime State
+
+A runtime state file alone is never proof that a Mini Server instance is still running.
+
+The exclusive instance lock is authoritative.
+
+If no process owns the instance lock, a new Mini Server instance may start normally even when stale runtime state remains from a previous execution.
+
+After acquiring the lock, the new process must invalidate or replace stale runtime state before publishing its newly assigned port.
+
+This prevents a repeated start from using an obsolete port value while a new instance is still starting.
+
+### Server Lifetime
+
+Closing Microsoft Edge does not stop Mini Server.
+
+The server process continues running independently of individual browser windows or tabs.
+
+The server remains active until its Java process ends, for example because:
+
+- The user logs off
+- The operating system shuts down
+- The Java process is explicitly terminated
+- The process exits because of a fatal server error
+
+Mini Server v1.0 does not provide an HTTP shutdown endpoint.
+
+A hosted web application must therefore not be able to terminate Mini Server through a normal browser API request.
+
+### Process Termination
+
+The operating system releases the exclusive instance lock when the owning Java process terminates.
+
+This also applies when the process terminates unexpectedly.
+
+A stale runtime state file may remain after abnormal termination.
+
+Such stale state must not prevent a later Mini Server start because the runtime state file is not authoritative without the corresponding active instance lock.
+
+### Persistence Safety
+
+Preventing multiple server processes from operating on the same installation also prevents independent Mini Server processes from concurrently modifying the same application persistence files.
+
+Within one running Mini Server process, normal synchronization and persistence integrity rules still apply.
+
+The single-instance mechanism is therefore part of the protection against competing writes to:
+
+    www/<site>/data/data.json
+
+### Rationale
+
+Mini Server is intended to behave like a local per-user service that can be started conveniently through a normal desktop action.
+
+Users should be able to start Mini Server repeatedly without needing to know whether it is already running.
+
+Reusing an existing instance gives repeated desktop starts predictable behavior while preserving the operating-system-assigned dynamic port model.
+
+A per-installation instance lock prevents multiple server processes from competing for the same persistence files.
+
+Keeping the server independent from the Edge process allows users to close or reopen browser windows without unintentionally stopping the local service.
+
+Avoiding an HTTP shutdown endpoint prevents ordinary hosted pages from receiving an unnecessary server-control capability.
+
+### Consequences
+
+- Only one Mini Server server process may run for one installation at a time.
+- Independent Mini Server installations may run simultaneously.
+- The server continues to bind only to `127.0.0.1`.
+- Every newly started server instance continues to request port `0`.
+- Mini Server does not scan for free ports.
+- The assigned port is published only after the server has successfully started.
+- Runtime lock and state information are stored outside `www/`.
+- A repeated start reuses the existing server instance instead of creating another one.
+- A repeated start opens Edge using the port of the existing instance.
+- A stale state file does not imply that a server is still running.
+- The instance lock is authoritative for determining whether an instance exists.
+- Closing Edge does not stop Mini Server.
+- Mini Server v1.0 has no browser-accessible HTTP shutdown endpoint.
+- Multiple independent server processes cannot concurrently modify the same installation's persistence files under normal operation.
+- Abnormal process termination does not permanently block subsequent starts because the operating system releases the process-owned lock.
+
+---
+
 ## Changing Decisions
 
 Existing decisions should not be silently rewritten when project requirements change.
