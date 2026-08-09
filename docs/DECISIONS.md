@@ -278,25 +278,23 @@ Application developers should not have to repeatedly implement HTTP requests, JS
 
 The intended location is:
 
-```text
-www/_shared/mini-api.js
-```
+    www/_shared/mini-api.js
 
 Applications may include it with:
 
-```html
-<script src="/_shared/mini-api.js"></script>
-```
+    <script src="/_shared/mini-api.js"></script>
 
-The library exposes a simple interface such as:
+The library exposes the following public browser-side API:
 
-```javascript
-MiniApi.read(section)
-MiniApi.readAll()
-MiniApi.write(data)
-MiniApi.remove(section)
-MiniApi.clear()
-```
+    MiniApi.readSection(section)
+    MiniApi.readAll()
+    MiniApi.write(data)
+    MiniApi.removeSection(section)
+    MiniApi.clear()
+
+These method names form the intended public MiniApi interface for the initial release.
+
+Application code should use this public interface rather than constructing persistence API requests directly during normal use.
 
 ---
 

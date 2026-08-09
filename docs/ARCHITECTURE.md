@@ -314,22 +314,22 @@ Applications can include the shared library using a URL such as:
 
 The library provides the browser-facing API:
 
-```javascript
-MiniApi.read(section)
-MiniApi.readAll()
-MiniApi.write(data)
-MiniApi.remove(section)
-MiniApi.clear()
-```
+    MiniApi.readSection(section)
+    MiniApi.readAll()
+    MiniApi.write(data)
+    MiniApi.removeSection(section)
+    MiniApi.clear()
+
+These names define the public MiniApi interface for the initial release.
+
+Application code should normally use this shared interface rather than constructing persistence API requests directly.
 
 The JavaScript library works with native JavaScript objects and arrays.
 
 Application developers should not need to call:
 
-```javascript
-JSON.stringify()
-JSON.parse()
-```
+    JSON.stringify()
+    JSON.parse()
 
 for normal API use.
 

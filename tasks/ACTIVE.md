@@ -259,13 +259,13 @@ www/_shared/mini-api.js
 
 The library must expose:
 
-MiniApi.read(section)
+MiniApi.readSection(section)
 
 MiniApi.readAll()
 
 MiniApi.write(data)
 
-MiniApi.remove(section)
+MiniApi.removeSection(section)
 
 MiniApi.clear()
 

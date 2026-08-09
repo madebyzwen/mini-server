@@ -100,13 +100,13 @@ The example and template applications must demonstrate use of the shared JavaScr
 
 The demonstration must use:
 
-MiniApi.read(section)
+MiniApi.readSection(section)
 
 MiniApi.readAll()
 
 MiniApi.write(data)
 
-MiniApi.remove(section)
+MiniApi.removeSection(section)
 
 MiniApi.clear()
 
