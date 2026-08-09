@@ -27,7 +27,7 @@ Completed tasks may be removed from this file after their result has been docume
 
 ## T-001 — Create Initial Java Project Structure
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
