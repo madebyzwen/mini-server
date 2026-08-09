@@ -202,7 +202,7 @@ Acceptance:
 
 ## T-002 — Implement Dynamic Local Server Startup
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
