@@ -1,0 +1,346 @@
+# Architecture
+
+## Overview
+
+Mini Server is a lightweight web server intended for local or internal use.
+
+The server hosts multiple independent small web applications below a shared `www` root directory.
+
+Each web application is represented by its own first-level subdirectory below `www`.
+
+The server provides:
+
+- Static file serving
+- A central JSON persistence API
+- A shared JavaScript client library
+- Per-application JSON data storage
+- Isolation between individual web applications
+
+The server itself does not interpret application-specific data.
+
+## Runtime Structure
+
+The basic runtime structure is:
+
+```text
+mini-server/
+├── server/
+│   └── ...
+└── www/
+    ├── _shared/
+    │   └── mini-api.js
+    ├── example/
+    │   ├── index.html
+    │   ├── assets/
+    │   └── data/
+    │       └── data.json
+    ├── template/
+    │   ├── index.html
+    │   ├── assets/
+    │   └── data/
+    │       └── data.json
+    └── another-app/
+        ├── index.html
+        ├── assets/
+        └── data/
+            └── data.json
+```
+
+The final Java source layout may differ from the simplified `server/` representation above and will be defined by the implementation structure.
+
+## Web Application Model
+
+Each first-level directory below `www` represents an independent web application.
+
+Examples:
+
+```text
+www/example/
+www/template/
+www/dashboard/
+www/notes/
+```
+
+A web application owns its own:
+
+- Static HTML files
+- CSS
+- JavaScript
+- Assets
+- JSON persistence file
+
+The standard persistence location for an application is:
+
+```text
+www/<site>/data/data.json
+```
+
+For example:
+
+```text
+www/example/data/data.json
+www/dashboard/data/data.json
+```
+
+## Static File Serving
+
+Static resources are served from the `www` directory.
+
+A request such as:
+
+```text
+/example/index.html
+```
+
+maps to:
+
+```text
+www/example/index.html
+```
+
+The server must prevent path traversal outside the configured `www` root.
+
+## Central API
+
+The API is implemented once in the Java server.
+
+Individual web applications do not contain their own server-side API implementations.
+
+The site is derived from the first path component of the request.
+
+For example:
+
+```text
+/example/api/read?section=settings
+```
+
+is interpreted as:
+
+```text
+site = example
+operation = read
+section = settings
+```
+
+The server automatically maps the request to:
+
+```text
+www/example/data/data.json
+```
+
+Likewise:
+
+```text
+/dashboard/api/read?section=settings
+```
+
+maps to:
+
+```text
+www/dashboard/data/data.json
+```
+
+The API implementation is therefore shared globally while each application receives a logically separate API namespace through its URL path.
+
+## API Operations
+
+The central API provides the following logical operations:
+
+```text
+/<site>/api/read?section=<name>
+/<site>/api/readAll
+/<site>/api/write
+/<site>/api/remove?section=<name>
+/<site>/api/clear
+```
+
+The intended behavior is:
+
+### read
+
+Reads one named section from the site's JSON data file.
+
+### readAll
+
+Reads the complete JSON data file for the site.
+
+### write
+
+Creates or replaces one or more sections in the site's JSON data file.
+
+### remove
+
+Removes one named section from the site's JSON data file.
+
+### clear
+
+Resets the site's JSON data to an empty state.
+
+Detailed request and response formats are defined by the requirements and API documentation rather than this architecture document.
+
+## Data Model
+
+The JSON persistence layer is intentionally generic.
+
+The server does not interpret the semantic meaning of stored application data.
+
+At the server level, data is organized into named sections.
+
+A section may contain normal JSON-compatible values, including:
+
+- Strings
+- Numbers
+- Booleans
+- Arrays
+- Objects
+- Null values
+
+The web application defines the meaning and internal structure of the stored data.
+
+## Application Isolation
+
+Applications must be isolated from each other's persistent data.
+
+A request below:
+
+```text
+/example/api/
+```
+
+may only access:
+
+```text
+www/example/data/data.json
+```
+
+It must not be possible for that API namespace to read or modify:
+
+```text
+www/dashboard/data/data.json
+www/template/data/data.json
+```
+
+or any data belonging to another application.
+
+The site scope is determined by the server from the request path.
+
+The client must not be allowed to supply an arbitrary filesystem path for persistence operations.
+
+## Shared JavaScript Client Library
+
+A shared browser-side JavaScript library named:
+
+```text
+mini-api.js
+```
+
+is maintained centrally.
+
+It is intended to be served from:
+
+```text
+www/_shared/mini-api.js
+```
+
+Applications can include the shared library using a URL such as:
+
+```html
+<script src="/_shared/mini-api.js"></script>
+```
+
+The library provides the browser-facing API:
+
+```javascript
+MiniApi.read(section)
+MiniApi.readAll()
+MiniApi.write(data)
+MiniApi.remove(section)
+MiniApi.clear()
+```
+
+The JavaScript library works with native JavaScript objects and arrays.
+
+Application developers should not need to call:
+
+```javascript
+JSON.stringify()
+JSON.parse()
+```
+
+for normal API use.
+
+Serialization and deserialization are handled internally by `mini-api.js`.
+
+The library also performs basic validation before sending data to the server.
+
+## Site Detection
+
+The shared JavaScript library should determine the current site from the browser URL.
+
+For example, when running from:
+
+```text
+http://127.0.0.1:<port>/example/index.html
+```
+
+the library determines:
+
+```text
+site = example
+```
+
+and sends API requests below:
+
+```text
+/example/api/
+```
+
+The site should not normally need to be configured manually by application code.
+
+## Example and Template Applications
+
+The distributed `www` content will initially include two applications:
+
+```text
+www/example/
+www/template/
+```
+
+Both initially provide the same minimal demonstration of the available API.
+
+`template` serves as an unchanged starting point for developers.
+
+`example` may be modified or used as a working demonstration.
+
+The example content will demonstrate the central API operations and the shared JavaScript client library.
+
+## Network Boundary
+
+The server is intended for trusted local or internal environments.
+
+It is not designed as a public internet-facing web server.
+
+The exact network binding, port allocation, launch behavior, and related runtime constraints are defined in the project decisions and requirements rather than duplicated here.
+
+## Architectural Principles
+
+The implementation should preserve the following principles:
+
+- Keep the server small and understandable.
+- Keep application-specific logic out of the server.
+- Centralize shared API behavior.
+- Centralize the browser-side API library.
+- Keep each application's persistent data isolated.
+- Avoid unnecessary external frameworks and dependencies.
+- Do not expose arbitrary filesystem access through the API.
+- Prefer clear path-based scoping over client-supplied storage locations.
+- Keep the architecture suitable for multiple independent applications below one `www` root.
+
+## Related Documents
+
+See:
+
+- `docs/DECISIONS.md` for approved technical decisions and constraints
+- `requirements/` for functional and non-functional requirements
+- `docs/PROJECT_NOTES.md` for working knowledge and observations
+- `docs/DEBUGGING.md` for known problems and verified fixes
