@@ -52,9 +52,9 @@ Example:
 
 www/
 ├── example/
-├── template/
 ├── dashboard/
-└── notes/
+├── notes/
+└── my-app/
 
 Each of these directories may contain its own HTML files, scripts, stylesheets, assets, and other static content.
 

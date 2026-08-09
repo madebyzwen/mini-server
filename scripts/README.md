@@ -1,81 +1,185 @@
 # Scripts
 
-This directory contains project scripts that support development, testing, building, running, and maintenance tasks.
+This directory contains optional convenience and project automation scripts for Mini Server.
 
-Scripts should provide a simple and predictable way to perform common project operations without requiring developers or coding agents to remember long command sequences.
+Maven is the authoritative build and test system defined by D-019.
+
+Scripts must not become an independent or competing build system.
 
 ## Purpose
 
-Use this directory for reusable project automation such as:
+Scripts may provide convenient entry points for repeatable development, runtime, packaging, validation, or release operations.
 
-- Project setup
-- Build commands
-- Local server startup
-- Test execution
-- Linting or validation
-- Packaging
-- Release preparation
-- Other repeatable development tasks
+Possible uses include:
 
-Scripts should remain small, understandable, and directly related to the project.
+- Starting Mini Server during development
+- Invoking Maven builds
+- Invoking automated tests
+- Packaging a distribution
+- Creating the reusable template package
+- Performing release preparation
+- Running project validation
+- Supporting platform-specific startup behavior where appropriate
 
-## Planned Scripts
+A script should only be introduced when it provides a clear practical benefit.
 
-The initial project structure may provide scripts such as:
+## Maven Integration
 
-setup
+The authoritative build configuration is:
 
-run
+    pom.xml
 
-test
+at the repository root.
 
-lint
+Build, dependency, compilation, and automated Java test configuration belong in Maven.
 
-The exact filenames, file extensions, and implementation details depend on the final build and runtime structure.
+Scripts may invoke Maven commands such as:
 
-Not every placeholder script must be implemented if the corresponding operation is already handled cleanly by the selected build system.
+    mvn test
+
+or later approved build and packaging commands.
+
+Scripts must not duplicate Maven configuration independently.
+
+For example, a script must not maintain its own separate:
+
+- Java compiler target
+- Dependency list
+- Test framework configuration
+- Build output definition
+- Packaging dependency configuration
+
+If a build-related setting changes, the authoritative change belongs in `pom.xml`.
+
+## Development and Runtime Scripts
+
+Development convenience scripts may be introduced when they simplify common operations.
+
+Examples may include:
+
+    run
+    test
+    package
+    verify
+
+These names are examples only.
+
+The exact filenames, extensions, platforms, and script set will be chosen during implementation when there is an actual need for them.
+
+Not every possible convenience script must exist.
+
+If the Maven command itself is already sufficiently simple, an additional wrapper script is unnecessary.
+
+## Windows Runtime Launch
+
+Mini Server v1.0 targets Windows for the normal user-facing runtime experience.
+
+A Windows launcher or equivalent startup mechanism may be provided as part of the distribution.
+
+Its responsibilities may include starting the Java application in the intended way and supporting the normal desktop-launch experience.
+
+The Mini Server Java implementation remains responsible for:
+
+- Per-installation single-instance handling
+- Runtime-state handling
+- Loopback server startup
+- Dynamic port allocation
+- Repeated-start detection
+- Selecting the active server port
+- Microsoft Edge launch behavior defined by the active requirements
+
+A launcher script must not implement a separate competing instance-management or port-selection mechanism.
+
+In particular, it must not:
+
+- Scan for available TCP ports
+- Select a fixed server port
+- Maintain independent server-instance state
+- Bypass the Java single-instance mechanism
+
+## Template Packaging
+
+The maintained reusable starter-template source is stored at:
+
+    template/
+
+The distributed template artifact is:
+
+    miniweb-template.zip
+
+A packaging script may later be introduced to create this archive.
+
+If template packaging becomes part of the Maven build, any convenience script should invoke the authoritative Maven packaging operation rather than implementing a second independent packaging process.
+
+The final packaging workflow will be defined during implementation preparation.
+
+## Cross-Platform Development
+
+Development may take place on platforms other than the Windows runtime target.
+
+Project automation should avoid unnecessary dependence on one developer workstation.
+
+Where platform-specific scripts are necessary, their intended platform must be clear from their filename or documentation.
+
+Cross-platform development scripts and Windows runtime-launch scripts may have different responsibilities.
 
 ## Script Design
 
 Scripts should:
 
-- Be deterministic where practical
-- Fail clearly when an operation cannot be completed
-- Return a failing exit status when the requested operation fails
+- Be small and understandable
+- Have one clear purpose
+- Fail clearly when the requested operation fails
+- Return an appropriate failing exit status where applicable
 - Avoid silently ignoring errors
-- Avoid modifying unrelated files
-- Avoid requiring administrator privileges for normal development tasks
-- Avoid embedding machine-specific absolute paths
-- Avoid storing credentials, tokens, or other secrets
+- Avoid modifying unrelated project files
+- Avoid machine-specific absolute paths
+- Avoid requiring administrator privileges for normal operations
+- Avoid embedded credentials, tokens, or secrets
+- Delegate authoritative build operations to Maven
+- Remain consistent with active requirements and approved decisions
 
-## Development Environment
+## Build Outputs
 
-Scripts should be suitable for the normal project development workflow.
+Scripts must not treat generated build artifacts as source files.
 
-Where platform-specific scripts are necessary, their intended environment should be clear from the filename or documentation.
+Normal generated Maven output such as:
 
-The project may be developed on a Linux-based development environment while the initial Mini Server runtime targets Windows.
+    target/
 
-Build and test automation should therefore avoid unnecessary assumptions about a single developer workstation.
+is disposable build output.
 
-## Build Integration
+Runtime state such as:
 
-Where possible, scripts should delegate build, dependency, and test operations to the project's selected build tooling rather than duplicating build logic.
+    .runtime/
 
-The authoritative build configuration should remain in the appropriate project build files.
+is also not source content.
 
-Scripts are convenience entry points, not a second build configuration.
+Scripts must not intentionally commit generated build output or local runtime state.
 
 ## Coding Agent Guidance
 
-Coding agents may use and update scripts when required by an active task.
+Before creating or modifying a script:
 
-Before creating a new script, check whether an existing script or build command already provides the required functionality.
+1. Read `AGENTS.md`.
+2. Check the relevant active requirements.
+3. Check `docs/ARCHITECTURE.md`.
+4. Check applicable decisions in `docs/DECISIONS.md`.
+5. Review the corresponding implementation task in `tasks/ACTIVE.md`.
+6. Check whether Maven already provides the required operation.
 
-Do not create multiple scripts that perform the same operation without a clear reason.
+Do not create a wrapper script merely because one might be convenient in theory.
 
-When changing script behavior, keep relevant documentation and task information consistent.
+Create scripts only when they solve a concrete development, runtime, packaging, or release need.
+
+Do not introduce an independent build configuration through scripts.
 
 ## Current State
 
-No project scripts have been implemented yet.
+Maven is defined as the authoritative build system.
+
+The `scripts/` directory remains available for future convenience automation.
+
+No concrete project scripts are required until implementation or packaging work demonstrates a need for them.
+
+Concrete scripts will be created later through Codex where required by the approved implementation tasks.

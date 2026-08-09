@@ -47,7 +47,7 @@ The `.runtime/` directory is created and managed as local runtime state. It is o
 
 The runtime files represent the current installation instance state. `instance.lock` is used for exclusive instance ownership, while `instance.json` contains runtime information such as the currently assigned TCP port.
 
-The final Java source layout may differ from the simplified `server/` representation above and will be defined by the implementation structure.
+The Java source and build layout is defined by D-019. The simplified `server/` representation above describes the runtime distribution concept and does not represent the Maven source tree.
 
 ## Web Application Model
 
@@ -413,7 +413,7 @@ could deliberately send a request to:
 
     /dashboard/api/readAll
 
-The server would process that request within the `template` namespace because the requested URL explicitly targets that namespace.
+The server would process that request within the `dashboard` namespace because the requested URL explicitly targets that namespace.
 
 Mini Server v1.0 does not provide authentication or authorization between hosted applications.
 

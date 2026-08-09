@@ -507,7 +507,7 @@ could deliberately send a request to:
 
     /dashboard/api/readAll
 
-The server would interpret that request as a request for the `template` namespace because the target site is derived from the requested URL.
+The server would process that request within the `dashboard` namespace because the requested URL explicitly targets that namespace.
 
 Preventing such deliberate interaction would require an authentication or authorization mechanism that is outside the intended scope of the lightweight initial implementation.
 
@@ -1040,6 +1040,221 @@ Avoiding an HTTP shutdown endpoint prevents ordinary hosted pages from receiving
 - Mini Server v1.0 has no browser-accessible HTTP shutdown endpoint.
 - Multiple independent server processes cannot concurrently modify the same installation's persistence files under normal operation.
 - Abnormal process termination does not permanently block subsequent starts because the operating system releases the process-owned lock.
+
+---
+
+## D-019 — Maven Build and Project Source Structure
+
+### Decision
+
+Mini Server v1.0 uses Maven as its authoritative build system.
+
+The project follows the conventional Maven source layout for Java production code and automated Java tests.
+
+The intended development structure is:
+
+    mini-server/
+    ├── pom.xml
+    ├── src/
+    │   ├── main/
+    │   │   └── java/
+    │   │       └── io/github/madebyzwen/miniserver/
+    │   └── test/
+    │       └── java/
+    │           └── io/github/madebyzwen/miniserver/
+    ├── template/
+    │   ├── index.html
+    │   ├── assets/
+    │   └── data/
+    │       └── data.json
+    ├── tests/
+    │   └── README.md
+    ├── scripts/
+    │   └── README.md
+    └── www/
+        ├── _shared/
+        │   └── mini-api.js
+        └── example/
+            ├── index.html
+            ├── assets/
+            └── data/
+                └── data.json
+
+Additional project documentation and release files remain at their existing repository locations.
+
+### Maven Build
+
+The repository root contains:
+
+    pom.xml
+
+This file is the authoritative build configuration for the Java implementation.
+
+Build behavior must not be duplicated independently in shell scripts, IDE configuration, or other secondary build definitions.
+
+Convenience scripts may invoke Maven but must not become an independent build system.
+
+### Java Source Layout
+
+Production Java source code belongs below:
+
+    src/main/java/
+
+The base Java package for Mini Server is:
+
+    io.github.madebyzwen.miniserver
+
+The corresponding base source directory is:
+
+    src/main/java/io/github/madebyzwen/miniserver/
+
+Subpackages may be introduced where they provide useful separation of responsibilities.
+
+The package structure should remain small and understandable and must not introduce unnecessary architectural layers.
+
+### Automated Test Layout
+
+Automated Java tests belong below:
+
+    src/test/java/
+
+The normal test package hierarchy should correspond to the production package hierarchy where practical.
+
+The existing top-level:
+
+    tests/
+
+directory is used for test documentation and other test-related project material that does not belong in the Maven Java test source tree.
+
+Automated Java test classes must not be placed directly in the top-level `tests/` directory.
+
+### Web Root
+
+Hosted web content remains outside the Java source tree.
+
+The runtime web root remains:
+
+    www/
+
+Shared browser-side code remains below:
+
+    www/_shared/
+
+Individual hosted applications remain first-level directories below:
+
+    www/<site>/
+
+Web application content must not be embedded into Java source packages merely to satisfy the Maven structure.
+
+### Reusable Template Source
+
+The maintained source contents used to produce the reusable Mini Server starter template are stored outside the runtime web root at:
+
+    template/
+
+This directory is development and packaging input.
+
+It is not itself a hosted Mini Server application.
+
+The packaged distribution artifact remains:
+
+    miniweb-template.zip
+
+The archive is produced from the reusable template source during the packaging or release process.
+
+The template source must not require a permanent:
+
+    www/template/
+
+application.
+
+A developer using the distributed template extracts or copies its contents into a new first-level application directory such as:
+
+    www/my-app/
+
+### Java Compatibility
+
+The Maven build must enforce compatibility with the Java version approved for Mini Server v1.0.
+
+The current target is Java 8.
+
+Production code, automated tests, build plugins, and runtime dependencies used for v1.0 must therefore remain compatible with Java 8 where they participate in the Java 8 build or runtime.
+
+Development may take place using a newer JDK as long as the build configuration and verification process continue to enforce the approved Java 8 target.
+
+Final compatibility must be verified against the approved Java 8 runtime as required by the active requirements.
+
+### Dependencies
+
+External dependencies may be introduced through Maven when they provide a clear technical benefit and remain compatible with the approved Java target.
+
+Mini Server should continue to prefer a small dependency set.
+
+Large application frameworks must not be introduced merely for convenience when the required server functionality can remain small and understandable.
+
+The exact runtime libraries, test framework versions, Maven plugin versions, and packaging plugin configuration are implementation decisions that may be finalized when the initial `pom.xml` is created.
+
+Those implementation choices must not contradict the active requirements or approved architectural decisions.
+
+### Scripts
+
+The top-level:
+
+    scripts/
+
+directory remains available for small convenience and project automation scripts.
+
+Scripts may support activities such as:
+
+- Running the application
+- Invoking tests
+- Packaging
+- Release preparation
+- Development validation
+
+Where Maven already provides the authoritative operation, scripts should delegate to Maven rather than duplicating build logic.
+
+### Build Outputs
+
+Generated Maven build output must not be committed as source content.
+
+Normal generated output such as:
+
+    target/
+
+is considered disposable build output.
+
+The repository's ignore rules must exclude normal generated build artifacts.
+
+### Rationale
+
+Using the conventional Maven structure reduces project-specific build conventions and makes the repository immediately understandable to Java developers and coding agents.
+
+Keeping one authoritative `pom.xml` avoids duplicated build configuration.
+
+Separating Java source code, automated Java tests, hosted web content, and reusable template source gives each project area a clear responsibility.
+
+Keeping `www/` outside the Java source tree preserves Mini Server's model in which web applications remain directly editable files rather than application resources hidden inside Java packages.
+
+Maintaining reusable template source outside `www/` preserves the distinction between the living example application and the clean starter template package.
+
+### Consequences
+
+- Maven is the authoritative build system for Mini Server v1.0.
+- The authoritative build file is the root `pom.xml`.
+- Production Java code belongs below `src/main/java/`.
+- Automated Java tests belong below `src/test/java/`.
+- The base Java package is `io.github.madebyzwen.miniserver`.
+- The top-level `tests/` directory is not the Java test source directory.
+- Hosted web applications remain below `www/`.
+- Reusable template source is maintained below top-level `template/`.
+- `template/` is not part of the runtime web root.
+- The distributed reusable template remains `miniweb-template.zip`.
+- No permanent `www/template/` application is required.
+- Build output such as `target/` is not committed.
+- The Maven build must enforce the approved Java 8 target.
+- Exact dependency versions, Maven plugin versions, test framework versions, executable-JAR packaging details, and the concrete initial `pom.xml` configuration are deferred until implementation preparation.
+- Codex may implement the build configuration later, but it must follow this decision and the active requirements.
 
 ---
 

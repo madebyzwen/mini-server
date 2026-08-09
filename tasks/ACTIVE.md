@@ -31,36 +31,172 @@ Status: Planned
 
 Related requirements:
 
-- REQ-001
-- REQ-002
-- REQ-006
 - REQ-008
 
 Description:
 
-Create the initial Java project structure for Mini Server.
+Create the initial Maven project and source structure for the Mini Server Java implementation according to D-019.
 
-The project must be configured to remain compatible with Java 8.
+This task establishes the build and source foundation for the later implementation tasks.
 
-The initial structure should provide a clean separation between:
+It must not independently define application behavior that belongs to later tasks.
 
-- Server startup
-- HTTP request handling
-- Static file handling
-- API handling
-- File persistence
-- Browser launch support
+### Maven Build
 
-Avoid unnecessary dependencies.
+Create the authoritative Maven build configuration at:
 
-The exact package structure may be chosen during implementation as long as it remains simple and understandable.
+    pom.xml
+
+in the repository root.
+
+The Maven project must:
+
+- Target the approved Java 8 runtime
+- Use the conventional Maven source layout
+- Support compilation of production Java source code
+- Support compilation and execution of automated Java tests
+- Produce build output below `target/`
+- Provide the foundation for later runtime packaging
+
+The concrete dependency versions, test framework versions, Maven plugin versions, executable-JAR strategy, and final packaging configuration must use the choices approved during implementation preparation.
+
+Codex must not silently choose architectural alternatives that conflict with active requirements or approved decisions.
+
+### Production Source Layout
+
+Production Java source code belongs below:
+
+    src/main/java/
+
+The base Java package is:
+
+    io.github.madebyzwen.miniserver
+
+The corresponding source path is:
+
+    src/main/java/io/github/madebyzwen/miniserver/
+
+Subpackages may be introduced during later implementation tasks when they provide useful separation of responsibilities.
+
+The package structure must remain small and understandable.
+
+### Automated Test Layout
+
+Automated Java test source code belongs below:
+
+    src/test/java/
+
+The base test package corresponds to:
+
+    io.github.madebyzwen.miniserver
+
+The top-level:
+
+    tests/
+
+directory remains test documentation and supporting project material.
+
+Java test classes must not be placed directly in the top-level `tests/` directory.
+
+### Web Content
+
+The runtime web root remains:
+
+    www/
+
+It must remain outside the Java source tree.
+
+The initial repository structure must support:
+
+    www/_shared/
+    www/example/
+
+without embedding these directories into Java source packages.
+
+### Reusable Template Source
+
+Create or preserve the top-level development source location:
+
+    template/
+
+for the reusable starter-template contents.
+
+This directory is packaging input and is not part of the runtime web root.
+
+It must not create or require:
+
+    www/template/
+
+The later packaging process will produce:
+
+    miniweb-template.zip
+
+from the maintained reusable template source.
+
+### Build and Runtime Separation
+
+Generated build output belongs below:
+
+    target/
+
+Local process runtime state belongs below:
+
+    .runtime/
+
+Neither directory is project source content.
+
+Both must remain excluded from normal Git tracking.
+
+### Scripts
+
+The existing:
+
+    scripts/
+
+directory remains available for optional convenience automation.
+
+Maven remains authoritative for build and automated Java test behavior.
+
+T-001 must not introduce a second independent build configuration through scripts.
+
+### Scope
+
+This task establishes project structure and build infrastructure only.
+
+It does not implement the functional behavior assigned to later tasks, including:
+
+- HTTP server startup
+- Dynamic port allocation
+- Instance locking
+- Static file serving
+- API routing
+- JSON persistence
+- MiniApi behavior
+- Example application behavior
+- Microsoft Edge launch behavior
+
+Those responsibilities remain with their dedicated implementation tasks.
 
 Acceptance:
 
-- The project builds successfully.
-- The produced code targets Java 8.
-- A minimal server application can be started.
-- The project structure is ready for the remaining implementation tasks.
+- A root `pom.xml` exists.
+- Maven is the authoritative Java build system.
+- The Maven build enforces the approved Java 8 target.
+- Production Java source uses `src/main/java/`.
+- The base production package is `io.github.madebyzwen.miniserver`.
+- Automated Java tests use `src/test/java/`.
+- The top-level `tests/` directory is not used as the Maven Java test source directory.
+- The runtime web root remains outside the Java source tree at `www/`.
+- Shared browser-side content remains below `www/_shared/`.
+- The maintained example application remains below `www/example/`.
+- Reusable starter-template source has the top-level `template/` location.
+- No permanent `www/template/` application is introduced.
+- Generated Maven output is written below `target/`.
+- `target/` remains excluded from Git tracking.
+- `.runtime/` remains excluded from Git tracking.
+- Convenience scripts do not duplicate the authoritative Maven build configuration.
+- The initial Maven project can be compiled successfully once the minimum required source files for the implementation exist.
+- No functional Mini Server behavior is implemented merely to satisfy this project-structure task.
 
 ---
 

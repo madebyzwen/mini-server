@@ -35,11 +35,6 @@ www/
 │   ├── assets/
 │   └── data/
 │       └── data.json
-├── template/
-│   ├── index.html
-│   ├── assets/
-│   └── data/
-│       └── data.json
 └── another-app/
     └── ...
 ```

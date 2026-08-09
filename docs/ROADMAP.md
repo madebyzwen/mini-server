@@ -90,14 +90,16 @@ Possible improvements for developers include:
 
 ### Distribution and Packaging
 
-Future releases may provide simplified distribution packages for supported target environments.
+Version 1.0 is intended to provide a compact distribution that can be copied to the target Windows system without requiring a traditional system-wide installer.
 
-Possible goals include:
+The distribution goals include:
 
 - Minimal installation effort
-- Clear runtime requirements
-- Ready-to-use example and template content
-- Simple startup for non-developer users
+- Clear Java 8 runtime requirements
+- A maintained ready-to-use example application
+- A reusable starter template package distributed as `miniweb-template.zip`
+- A simple startup experience for non-developer users
+- No separate database, web server, application server, or container runtime
 
 ---
 
