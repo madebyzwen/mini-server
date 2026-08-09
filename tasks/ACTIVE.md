@@ -183,28 +183,167 @@ Related requirements:
 
 Description:
 
-Implement generic file-based JSON persistence for each application.
+Implement generic file-based JSON persistence for each valid application site.
+
+The persistence location is:
+
+    www/<site>/data/data.json
+
+Each persistence file must contain a JSON object at its root.
+
+The top-level properties of that object represent named sections.
+
+The empty persistence state is:
+
+    {}
+
+Section values may contain any valid JSON-compatible value, including objects, arrays, strings, numbers, booleans, and null.
 
 The persistence layer must support:
 
 - Reading one section
-- Reading all sections
-- Creating a section
-- Replacing a section
-- Writing multiple sections
+- Reading the complete root object
+- Creating one or more sections
+- Replacing one or more existing sections
+- Preserving unrelated sections during partial writes
 - Removing one section
 - Clearing all sections
 
-The server must not interpret application-specific data.
+A missing persistence file must behave as an empty persistence store for read-all and clear operations.
+
+Reading or removing a specific section from a missing persistence file must behave as though that section does not exist.
+
+A valid write operation may create the required `data` directory and `data.json` file inside an already existing valid application directory.
+
+The persistence layer must not create arbitrary application directories from unknown site names.
+
+If an existing persistence file contains invalid JSON or does not contain a JSON object at its root, the operation must fail rather than silently resetting or reinterpreting the file.
+
+Successful modifying operations must leave valid JSON persistence data.
 
 Acceptance:
 
-- Valid JSON data can be read and written.
-- Existing unrelated sections remain unchanged during partial writes.
-- Missing data files can be created when appropriate.
-- Invalid JSON is detected.
-- Failed writes are not reported as successful.
-- A failed write does not intentionally leave invalid JSON behind.
+- Persistence files use a JSON object as their root value.
+- Top-level properties represent sections.
+- Section values preserve valid JSON-compatible data without application-specific interpretation.
+- `read` can retrieve one existing section.
+- A stored JSON null value remains distinguishable from a missing section.
+- `readAll` retrieves the complete root object.
+- A missing persistence file behaves as `{}` for `readAll`.
+- `write` can create one or more sections.
+- `write` can replace one or more existing sections.
+- Sections omitted from a write remain unchanged.
+- Missing persistence files and data directories can be created during a valid write.
+- `remove` removes exactly one existing section.
+- `clear` produces the logical empty state `{}`.
+- Clearing an empty or not-yet-created persistence store succeeds.
+- Invalid JSON persistence data is detected.
+- A non-object persistence root is rejected.
+- Failed modifications are not reported as successful.
+- Successful modifications do not intentionally leave invalid or partially written JSON.
+- Persistence files are created only inside an already existing valid application directory.
+
+---
+
+## T-006 — Implement HTTP API Endpoints
+
+Status: Planned
+
+Related requirements:
+
+- REQ-003
+- REQ-007
+
+Description:
+
+Implement the central server-side persistence API according to D-017.
+
+The required endpoints and HTTP methods are:
+
+    GET    /<site>/api/read?section=<name>
+    GET    /<site>/api/readAll
+    POST   /<site>/api/write
+    DELETE /<site>/api/remove?section=<name>
+    DELETE /<site>/api/clear
+
+All valid application sites must use the same central Java implementation.
+
+The site namespace must be derived from the request URL.
+
+The client must not be able to supply an arbitrary filesystem path or persistence location.
+
+`read` returns the stored JSON value of one section directly.
+
+`readAll` returns the complete persistence root object directly.
+
+`write` accepts a non-empty JSON object whose top-level properties are the sections to create or replace.
+
+`remove` removes exactly one section.
+
+`clear` resets the site's persistence state to the logical equivalent of `{}`.
+
+Successful JSON-returning operations use:
+
+    200 OK
+
+with:
+
+    Content-Type: application/json; charset=utf-8
+
+Successful modifying operations use:
+
+    204 No Content
+
+with an empty response body.
+
+API errors use the structure:
+
+    {
+        "error": {
+            "code": "SECTION_NOT_FOUND",
+            "message": "Section not found."
+        }
+    }
+
+The API must use the following error categories where applicable:
+
+    400 Bad Request
+    404 Not Found
+    405 Method Not Allowed
+    415 Unsupported Media Type
+    500 Internal Server Error
+
+Section names must follow the validation rules defined by D-017.
+
+An unknown application namespace must not cause Mini Server to create a new application directory.
+
+Reserved Mini Server areas such as `www/_shared/` must not be treated as normal application API namespaces.
+
+Acceptance:
+
+- `GET /<site>/api/read` returns an existing section with `200 OK`.
+- Reading a missing section returns `404 Not Found`.
+- A stored JSON null section value returns successfully rather than being treated as missing.
+- `GET /<site>/api/readAll` returns the complete root object with `200 OK`.
+- `readAll` returns `{}` when the persistence file does not yet exist.
+- `POST /<site>/api/write` accepts a valid non-empty JSON object.
+- A successful write returns `204 No Content`.
+- Invalid or empty write payloads return an appropriate error.
+- Write requests with an unacceptable JSON content type return `415 Unsupported Media Type`.
+- `DELETE /<site>/api/remove` removes one existing section.
+- Removing a missing section returns `404 Not Found`.
+- A successful removal returns `204 No Content`.
+- `DELETE /<site>/api/clear` clears the current site's persistence state.
+- Clearing an empty or not-yet-created persistence store succeeds.
+- A successful clear returns `204 No Content`.
+- Known API operations reject unsupported HTTP methods with `405 Method Not Allowed`.
+- Unknown API operations return `404 Not Found`.
+- Unknown application namespaces return an appropriate not-found response.
+- API errors use the defined JSON error structure.
+- Browser-facing API errors do not expose unnecessary absolute filesystem paths.
+- Requests are scoped to the site namespace addressed by the URL.
+- Clients cannot override the derived persistence location with arbitrary filesystem paths.
+- Failed server operations never return a successful HTTP status.
 
 ---
 
@@ -253,33 +392,339 @@ Related requirements:
 
 Description:
 
-Create:
+Implement the shared browser-side JavaScript client library:
 
-www/_shared/mini-api.js
+    www/_shared/mini-api.js
 
-The library must expose:
+The library must expose the global object:
 
-MiniApi.readSection(section)
+    MiniApi
 
-MiniApi.readAll()
+with the public v1.0 methods:
 
-MiniApi.write(data)
+    MiniApi.readSection(section)
+    MiniApi.readAll()
+    MiniApi.write(data)
+    MiniApi.removeSection(section)
+    MiniApi.clear()
 
-MiniApi.removeSection(section)
+All public MiniApi operations must be asynchronous and return native JavaScript Promises.
 
-MiniApi.clear()
+The library must use browser-native functionality and remain dependency-free unless a later approved decision changes this requirement.
 
-The library must determine the current site automatically from the browser URL.
+### Site Detection
 
-JSON serialization and deserialization must be handled internally.
+MiniApi must automatically derive the current application site from:
+
+    window.location.pathname
+
+For a page below:
+
+    /example/
+
+MiniApi must automatically use:
+
+    /example/api/
+
+as its persistence API namespace.
+
+Application developers must not need to configure the site name manually.
+
+MiniApi must not accept arbitrary filesystem paths or persistence locations.
+
+Automatic site detection is a convenience and scoping mechanism, not an authentication boundary.
+
+### readSection
+
+The method:
+
+    MiniApi.readSection(section)
+
+must send:
+
+    GET /<site>/api/read?section=<encoded-name>
+
+The section name must be validated before the request where practical.
+
+The section name must be URL-encoded correctly.
+
+A successful `200 OK` JSON response must be deserialized automatically.
+
+The returned Promise must resolve with the native JavaScript value stored in the section.
+
+A stored JSON null value must therefore resolve successfully to:
+
+    null
+
+A missing section or another unsuccessful HTTP response must reject the Promise.
+
+### readAll
+
+The method:
+
+    MiniApi.readAll()
+
+must send:
+
+    GET /<site>/api/readAll
+
+A successful `200 OK` JSON response must be deserialized automatically.
+
+The returned Promise must resolve with the complete native JavaScript persistence object.
+
+An empty persistence store therefore resolves to:
+
+    {}
+
+### write
+
+The method:
+
+    MiniApi.write(data)
+
+must accept a native JavaScript object whose own top-level properties represent the sections to create or replace.
+
+Example:
+
+    await MiniApi.write({
+        settings: {
+            theme: "dark"
+        },
+        favorites: [
+            "Search A",
+            "Search B"
+        ]
+    });
+
+The caller must not need to use:
+
+    JSON.stringify()
+
+MiniApi must serialize the request body internally.
+
+The request must use:
+
+    POST /<site>/api/write
+
+with an appropriate JSON content type.
+
+The supplied `data` value must be rejected when it is:
+
+- null;
+- an array;
+- not an object;
+- an object containing no own top-level properties.
+
+Each top-level property name must satisfy the section-name rules defined by D-017.
+
+The supplied section values must be representable as valid JSON.
+
+Serialization or validation failures must reject the Promise and must not be reported as successful operations.
+
+A successful server response is:
+
+    204 No Content
+
+After successful completion, the Promise must resolve with:
+
+    undefined
+
+MiniApi must not expect a JSON response body for a successful write.
+
+### removeSection
+
+The method:
+
+    MiniApi.removeSection(section)
+
+must send:
+
+    DELETE /<site>/api/remove?section=<encoded-name>
+
+The section name must be validated and URL-encoded correctly.
+
+A successful server response is:
+
+    204 No Content
+
+After successful completion, the Promise must resolve with:
+
+    undefined
+
+A missing section or another unsuccessful HTTP response must reject the Promise.
+
+### clear
+
+The method:
+
+    MiniApi.clear()
+
+must send:
+
+    DELETE /<site>/api/clear
+
+A successful server response is:
+
+    204 No Content
+
+After successful completion, the Promise must resolve with:
+
+    undefined
+
+MiniApi must not attempt to parse a response body after a successful clear operation.
+
+### Section Validation
+
+Section names supplied to MiniApi must follow the API contract defined by D-017.
+
+A valid section name:
+
+- contains between 1 and 128 characters;
+- is not empty;
+- has no leading whitespace;
+- has no trailing whitespace;
+- contains no control characters.
+
+Unicode characters and normal characters such as spaces, hyphens, underscores, and periods may be used inside a section name.
+
+The same section-name validation must be applied to:
+
+    MiniApi.readSection(section)
+    MiniApi.removeSection(section)
+
+and to the top-level property names supplied to:
+
+    MiniApi.write(data)
+
+Client-side validation must remain generic and must not contain application-specific business rules.
+
+### JSON Handling
+
+MiniApi must handle JSON serialization and deserialization internally.
+
+Application code must not normally need to call:
+
+    JSON.stringify()
+
+or:
+
+    JSON.parse()
+
+when using MiniApi.
+
+Successful `readSection()` and `readAll()` responses must be parsed into native JavaScript values.
+
+`write()` must serialize native JavaScript data into the request body.
+
+Successful `write()`, `removeSection()`, and `clear()` operations return `204 No Content` and therefore must not trigger JSON response parsing.
+
+### Error Handling
+
+MiniApi must reject its Promise whenever an operation does not complete successfully.
+
+This includes:
+
+- Client-side validation failures
+- JSON serialization failures
+- Network failures
+- Non-successful HTTP responses
+- Invalid or unexpected JSON responses when JSON is expected
+
+The server's standard error response has the form:
+
+    {
+        "error": {
+            "code": "SECTION_NOT_FOUND",
+            "message": "Section not found."
+        }
+    }
+
+When this information is available, the rejected error exposed to application code must make the following values accessible:
+
+- HTTP status
+- Server error code
+- Human-readable message
+
+The exact internal JavaScript error implementation may be chosen during implementation.
+
+MiniApi must not silently transform a failed HTTP request into a successful JavaScript result.
+
+Unexpected or malformed server responses must reject rather than being silently ignored.
+
+### HTTP Contract
+
+MiniApi must use exactly the server-side API contract defined by D-017:
+
+    GET    /<site>/api/read?section=<name>
+    GET    /<site>/api/readAll
+    POST   /<site>/api/write
+    DELETE /<site>/api/remove?section=<name>
+    DELETE /<site>/api/clear
+
+MiniApi must not substitute different HTTP methods or endpoint names.
+
+Operations returning data expect:
+
+    200 OK
+
+Successful modifying operations expect:
+
+    204 No Content
+
+Any non-successful HTTP status must reject the Promise.
+
+### Generic Behavior
+
+The shared library must remain application-independent.
+
+It must not:
+
+- Interpret application-specific section contents
+- Contain application-specific business rules
+- Contain hard-coded application names
+- Expose arbitrary persistence filesystem paths
+- Require separate copies for individual applications
+
+One shared `mini-api.js` implementation must work for all normal hosted applications.
 
 Acceptance:
 
-- The same library works for multiple sites.
-- Native JavaScript objects and arrays can be used directly.
-- Application code does not require JSON.stringify() or JSON.parse() for normal API use.
-- Basic input validation is performed.
-- API failures remain visible to the caller.
+- `www/_shared/mini-api.js` exists.
+- The library exposes the global `MiniApi` object.
+- `MiniApi.readSection(section)` exists.
+- `MiniApi.readAll()` exists.
+- `MiniApi.write(data)` exists.
+- `MiniApi.removeSection(section)` exists.
+- `MiniApi.clear()` exists.
+- Every public MiniApi method returns a Promise.
+- MiniApi automatically derives the current site namespace.
+- Application code does not need to configure its site name.
+- `readSection()` uses the correct GET endpoint.
+- `readSection()` resolves with the native stored section value.
+- A stored JSON null value resolves successfully to null.
+- `readAll()` uses the correct GET endpoint.
+- `readAll()` resolves with the complete native root object.
+- `write()` uses the correct POST endpoint.
+- `write()` accepts a non-empty native JavaScript object.
+- `write()` can send one section.
+- `write()` can send multiple sections.
+- Invalid write roots are rejected.
+- Invalid section names are rejected.
+- MiniApi performs JSON serialization internally.
+- MiniApi performs JSON deserialization internally.
+- Application code does not normally require manual `JSON.stringify()` or `JSON.parse()`.
+- A successful write resolves with `undefined`.
+- `removeSection()` uses the correct DELETE endpoint.
+- A successful removal resolves with `undefined`.
+- `clear()` uses the correct DELETE endpoint.
+- A successful clear resolves with `undefined`.
+- Successful 204 responses are not parsed as JSON.
+- Section names are URL-encoded correctly.
+- Non-successful HTTP responses reject.
+- Network failures reject.
+- Server error status, code, and message remain accessible when available.
+- The library contains no application-specific business logic.
+- The same library works for multiple hosted applications.
 
 ---
 

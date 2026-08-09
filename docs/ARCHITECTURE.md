@@ -166,58 +166,195 @@ The API implementation is therefore shared globally while each application recei
 
 ## API Operations
 
-The central API provides the following logical operations:
+The central persistence API uses the following HTTP contract:
 
-```text
-/<site>/api/read?section=<name>
-/<site>/api/readAll
-/<site>/api/write
-/<site>/api/remove?section=<name>
-/<site>/api/clear
-```
+    GET    /<site>/api/read?section=<name>
+    GET    /<site>/api/readAll
+    POST   /<site>/api/write
+    DELETE /<site>/api/remove?section=<name>
+    DELETE /<site>/api/clear
 
-The intended behavior is:
+The HTTP method is part of the API contract.
 
 ### read
 
-Reads one named section from the site's JSON data file.
+    GET /<site>/api/read?section=<name>
+
+Reads one named section from the site's persistence data.
+
+The stored JSON value of the section is returned directly with:
+
+    200 OK
+
+A missing section returns:
+
+    404 Not Found
+
+A stored JSON `null` value is valid and is therefore distinguishable from a missing section by the HTTP status.
 
 ### readAll
 
-Reads the complete JSON data file for the site.
+    GET /<site>/api/readAll
+
+Returns the site's complete persistence root object with:
+
+    200 OK
+
+If the persistence file does not yet exist, the logical persistence state is empty and the operation returns:
+
+    {}
 
 ### write
 
-Creates or replaces one or more sections in the site's JSON data file.
+    POST /<site>/api/write
+
+Creates or replaces one or more sections.
+
+The request body is a non-empty JSON object whose top-level properties are the sections to create or replace.
+
+Sections that are not included in the request remain unchanged.
+
+A successful write returns:
+
+    204 No Content
 
 ### remove
 
-Removes one named section from the site's JSON data file.
+    DELETE /<site>/api/remove?section=<name>
+
+Removes exactly one named section.
+
+A successful removal returns:
+
+    204 No Content
+
+A missing section returns:
+
+    404 Not Found
 
 ### clear
 
-Resets the site's JSON data to an empty state.
+    DELETE /<site>/api/clear
 
-Detailed request and response formats are defined by the requirements and API documentation rather than this architecture document.
+Resets the site's persistence state to:
+
+    {}
+
+A successful clear returns:
+
+    204 No Content
+
+Clearing an already empty or not-yet-created persistence store is successful and is therefore idempotent.
+
+### HTTP Responses
+
+Operations returning JSON data use:
+
+    Content-Type: application/json; charset=utf-8
+
+API errors use a consistent JSON structure:
+
+    {
+        "error": {
+            "code": "SECTION_NOT_FOUND",
+            "message": "Section not found."
+        }
+    }
+
+The API uses the following error categories:
+
+    400 Bad Request
+    404 Not Found
+    405 Method Not Allowed
+    415 Unsupported Media Type
+    500 Internal Server Error
+
+Detailed request validation and error behavior are defined by D-017 and the active API requirements.
 
 ## Data Model
 
-The JSON persistence layer is intentionally generic.
+Each application's persistence file uses a JSON object as its root structure.
 
-The server does not interpret the semantic meaning of stored application data.
+The standard persistence location is:
 
-At the server level, data is organized into named sections.
+    www/<site>/data/data.json
 
-A section may contain normal JSON-compatible values, including:
+The top-level properties of the root object are named sections.
 
+Example:
+
+    {
+        "start": "Hello Mini Webserver",
+        "settings": {
+            "theme": "dark"
+        },
+        "favorites": [
+            "Search A",
+            "Search B"
+        ]
+    }
+
+The empty persistence state is:
+
+    {}
+
+The root value must always be a JSON object.
+
+An array, string, number, boolean, or null value is not a valid persistence root.
+
+### Sections
+
+Each top-level property represents one section.
+
+A section value may contain any valid JSON-compatible value, including:
+
+- Objects
+- Arrays
 - Strings
 - Numbers
 - Booleans
-- Arrays
-- Objects
-- Null values
+- Null
 
-The web application defines the meaning and internal structure of the stored data.
+The server does not interpret the application-specific meaning or internal structure of section values.
+
+A stored JSON null value is valid and is distinct from a missing section.
+
+### Section Names
+
+Section names are logical JSON property names.
+
+A valid section name:
+
+- contains between 1 and 128 characters;
+- is not empty;
+- has no leading or trailing whitespace;
+- contains no control characters.
+
+Unicode characters and normal characters such as spaces, hyphens, underscores, and periods may appear inside a section name.
+
+Section names must never be interpreted as filesystem paths.
+
+### Missing Persistence File
+
+A missing persistence file represents a persistence store that has not yet been created.
+
+For read-all and clear operations, its logical state is equivalent to:
+
+    {}
+
+Reading or removing a specific section from a missing persistence file behaves as though that section does not exist.
+
+A valid write operation may create the required `data` directory and `data.json` file inside an already existing application directory.
+
+### Invalid Persistence Data
+
+If an existing `data.json` file contains invalid JSON or does not contain a JSON object at its root, Mini Server must treat the persistence data as invalid.
+
+The server must not silently reinterpret or destructively reset invalid persistence data.
+
+The operation must fail and report an appropriate API error.
+
+The detailed persistence contract is defined by D-017 and the active JSON API requirement.
 
 ## Application Isolation
 
@@ -269,7 +406,7 @@ For example, JavaScript running from:
 
 could deliberately send a request to:
 
-    /template/api/readAll
+    /dashboard/api/readAll
 
 The server would process that request within the `template` namespace because the requested URL explicitly targets that namespace.
 

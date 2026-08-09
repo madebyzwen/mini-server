@@ -248,7 +248,7 @@ Examples:
 
 ```text
 /example/api/read
-/template/api/read
+/notes/api/read
 /dashboard/api/read
 ```
 
@@ -315,7 +315,7 @@ themselves.
 
 ### Rationale
 
-JSON transport is an implementation detail of the shared API library and should not complicate application code.
+JSON serialization and deserialization are handled internally by the shared API library and should not complicate application code.
 
 ### Consequences
 
@@ -505,7 +505,7 @@ For example, JavaScript loaded from:
 
 could deliberately send a request to:
 
-    /template/api/readAll
+    /dashboard/api/readAll
 
 The server would interpret that request as a request for the `template` namespace because the target site is derived from the requested URL.
 
@@ -522,6 +522,345 @@ Preventing such deliberate interaction would require an authentication or author
 - Mini Server v1.0 does not provide authentication or authorization between hosted applications.
 - Applications hosted together by one Mini Server instance should therefore be considered part of the same trusted local environment.
 - Public internet exposure remains outside the supported project scope.
+
+---
+
+## D-017 — HTTP and JSON API Contract
+
+### Decision
+
+Mini Server uses a small and stable HTTP contract for its JSON persistence API.
+
+The server-side API operations are:
+
+    GET    /<site>/api/read?section=<name>
+    GET    /<site>/api/readAll
+    POST   /<site>/api/write
+    DELETE /<site>/api/remove?section=<name>
+    DELETE /<site>/api/clear
+
+The browser-side MiniApi method names remain:
+
+    MiniApi.readSection(section)
+    MiniApi.readAll()
+    MiniApi.write(data)
+    MiniApi.removeSection(section)
+    MiniApi.clear()
+
+The browser-side method names and the server-side endpoint names do not need to be identical.
+
+### Persistence Root Structure
+
+Each site's persistence file contains a JSON object at its root.
+
+The top-level properties of this object are the site's named sections.
+
+Example:
+
+    {
+        "start": "Hello Mini Webserver",
+        "settings": {
+            "theme": "dark"
+        },
+        "favorites": [
+            "Search A",
+            "Search B"
+        ]
+    }
+
+The empty persistence state is:
+
+    {}
+
+A persistence file must not use an array, string, number, boolean, or null value as its root value.
+
+Individual section values may contain any valid JSON-compatible value, including:
+
+- Objects
+- Arrays
+- Strings
+- Numbers
+- Booleans
+- Null
+
+### Section Names
+
+Section names are logical JSON property names and are not filesystem paths.
+
+A valid section name:
+
+- must not be empty;
+- must contain between 1 and 128 characters;
+- must not contain leading or trailing whitespace;
+- must not contain control characters.
+
+Unicode characters and normal characters such as spaces, hyphens, underscores, and periods may be used inside a section name.
+
+MiniApi is responsible for correctly encoding section names when constructing HTTP requests.
+
+A section name must never be interpreted as a filesystem path.
+
+### Read One Section
+
+The operation:
+
+    GET /<site>/api/read?section=<name>
+
+returns the stored JSON value of the requested section directly.
+
+Example stored data:
+
+    {
+        "settings": {
+            "theme": "dark"
+        }
+    }
+
+A request for:
+
+    GET /example/api/read?section=settings
+
+returns:
+
+    {
+        "theme": "dark"
+    }
+
+A stored JSON null value is a valid section value and therefore returns:
+
+    null
+
+with a successful HTTP status.
+
+If the requested section does not exist, the operation returns:
+
+    404 Not Found
+
+with the normal JSON error response.
+
+### Read All Sections
+
+The operation:
+
+    GET /<site>/api/readAll
+
+returns the complete root JSON object for the site.
+
+If the site's persistence file does not yet exist, `readAll` behaves as though the site contains an empty persistence object and returns:
+
+    {}
+
+### Write Sections
+
+The operation:
+
+    POST /<site>/api/write
+
+accepts a JSON object as its request body.
+
+The top-level properties of that object are the sections to create or replace.
+
+Example:
+
+    {
+        "settings": {
+            "theme": "dark",
+            "language": "en"
+        },
+        "favorites": [
+            "Search A",
+            "Search B"
+        ]
+    }
+
+A write request must contain at least one section.
+
+The request body must therefore be a non-empty JSON object.
+
+For every supplied top-level property:
+
+- a missing section is created;
+- an existing section is replaced;
+- sections not included in the request remain unchanged.
+
+A successful write returns:
+
+    204 No Content
+
+and no response body.
+
+If the site's persistence file or `data` directory does not yet exist, Mini Server may create them within the valid site directory as required for the write operation.
+
+### Remove One Section
+
+The operation:
+
+    DELETE /<site>/api/remove?section=<name>
+
+removes exactly one named section.
+
+Other sections remain unchanged.
+
+A successful removal returns:
+
+    204 No Content
+
+and no response body.
+
+If the requested section does not exist, the operation returns:
+
+    404 Not Found
+
+with the normal JSON error response.
+
+A missing persistence file is equivalent to the requested section not existing.
+
+### Clear All Sections
+
+The operation:
+
+    DELETE /<site>/api/clear
+
+resets the site's persistence state to the logical equivalent of:
+
+    {}
+
+A successful clear returns:
+
+    204 No Content
+
+and no response body.
+
+Clearing an already empty persistence store is successful.
+
+Clearing a site whose persistence file does not yet exist is also successful.
+
+The operation is therefore idempotent.
+
+### Valid Site Requirement
+
+An API namespace must refer to an existing valid application directory below:
+
+    www/
+
+For example:
+
+    /example/api/
+
+is valid when:
+
+    www/example/
+
+exists as an application directory.
+
+The API must not create a new application directory merely because a request addresses an unknown site name.
+
+An unknown or invalid site returns an appropriate not-found error.
+
+Mini Server reserved areas such as:
+
+    www/_shared/
+
+must not be treated as normal application persistence namespaces.
+
+### Successful Responses
+
+Operations returning JSON data use:
+
+    200 OK
+
+with:
+
+    Content-Type: application/json; charset=utf-8
+
+Successful operations that do not return data use:
+
+    204 No Content
+
+with an empty response body.
+
+For the initial API this applies to:
+
+    POST   /<site>/api/write
+    DELETE /<site>/api/remove
+    DELETE /<site>/api/clear
+
+### Error Response Format
+
+API errors use a consistent JSON structure:
+
+    {
+        "error": {
+            "code": "SECTION_NOT_FOUND",
+            "message": "Section not found."
+        }
+    }
+
+The `code` value is a stable machine-readable error identifier.
+
+The `message` value is a concise human-readable description.
+
+Browser-facing error responses must not expose unnecessary absolute filesystem paths or sensitive internal details.
+
+### HTTP Error Categories
+
+The API uses the following HTTP status categories:
+
+    400 Bad Request
+
+for malformed requests, invalid section names, invalid JSON, invalid write payloads, or missing required request information.
+
+    404 Not Found
+
+for missing sections, unknown application sites, or unknown API operations.
+
+    405 Method Not Allowed
+
+when a known API operation is called using an unsupported HTTP method.
+
+    415 Unsupported Media Type
+
+when a write request does not provide an acceptable JSON request content type.
+
+    500 Internal Server Error
+
+for unexpected server-side or persistence failures that prevent the requested operation from completing.
+
+A failed operation must never return a successful HTTP status.
+
+### Rationale
+
+The contract is intentionally small and uses normal HTTP semantics.
+
+GET is used for non-modifying read operations.
+
+POST is used for persistence updates that create or replace one or more sections.
+
+DELETE is used for removal operations.
+
+Successful modifying operations return `204 No Content` because callers do not require an additional success object when the HTTP status already communicates successful completion.
+
+Returning section values directly keeps the browser-side API simple and avoids unnecessary wrapper structures.
+
+Using a root JSON object provides a direct and predictable mapping between top-level JSON properties and Mini Server sections.
+
+A consistent JSON error structure gives MiniApi and application developers a predictable way to handle failures.
+
+### Consequences
+
+- The HTTP methods and endpoint behavior are part of the v1.0 API contract.
+- `data.json` always uses a JSON object as its root structure.
+- Top-level JSON properties represent sections.
+- `MiniApi.write(data)` sends a non-empty object whose top-level properties are the sections to create or replace.
+- `read` returns the requested section value directly.
+- `readAll` returns the complete root object directly.
+- `write`, `remove`, and `clear` return `204 No Content` after successful completion.
+- A missing persistence file behaves as an empty store for `readAll` and `clear`.
+- A missing section returns `404 Not Found` for `read` and `remove`.
+- Valid JSON null remains distinguishable from a missing section because null is returned with `200 OK` while a missing section returns `404 Not Found`.
+- API errors use a consistent JSON error structure.
+- Clients cannot use section names or request payloads to provide persistence filesystem paths.
+- The API does not create arbitrary application directories from unknown site namespaces.
 
 ---
 
