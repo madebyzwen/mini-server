@@ -1,4 +1,4 @@
-# REQ-005 — Example and Template Applications
+# REQ-005 — Example Application and Template Package
 
 ## Requirement ID
 
@@ -6,7 +6,7 @@ REQ-005
 
 ## Title
 
-Example and Template Applications
+Example Application and Template Package
 
 ## Status
 
@@ -14,215 +14,242 @@ Active
 
 ## Purpose
 
-Mini Server must include a working example application and a reusable template application.
+Mini Server must include a maintained example application and a reusable starter template package.
 
-These applications should demonstrate the intended project structure and provide developers with a simple starting point for creating additional Mini Server web applications.
+The example application demonstrates the intended Mini Server application structure and public MiniApi interface.
+
+The template package provides developers with a clean and reusable starting point for creating new Mini Server web applications.
 
 ## Description
 
-The initial distribution must contain the following application directories:
+The initial distribution must contain a working example application at:
 
-www/example/
+    www/example/
 
-and:
+The example application is part of the normal Mini Server web root and may evolve as Mini Server functionality changes.
 
-www/template/
+A reusable starter template must be distributed separately as:
 
-Both applications should initially use the same basic structure and demonstrate the same core Mini Server functionality.
+    miniweb-template.zip
 
-The `example` application serves as a working demonstration.
+The template archive must be stored outside the `www` web root.
 
-The `template` application serves as a clean reusable starting point for developers.
+A permanent:
 
-## Directory Structure
+    www/template/
 
-Both applications should initially follow a structure similar to:
+application is not required in the normal distribution.
 
-www/<site>/
-├── index.html
-├── assets/
-└── data/
-    └── data.json
-
-Additional files may be included where required for the demonstration.
-
-Shared Mini Server functionality must not be duplicated unnecessarily inside these application directories.
-
-The shared JavaScript API library must continue to be provided centrally through:
-
-www/_shared/mini-api.js
-
-## Example Application
-
-The `example` application is intended to demonstrate how a web application uses Mini Server.
-
-It should provide a simple browser-based demonstration of the available persistence API.
-
-The demonstration should make it possible to exercise the following operations:
-
-- Read one section
-- Read all stored data
-- Write data
-- Remove one section
-- Clear stored data
-
-The example should use the shared `mini-api.js` library rather than implementing its own HTTP or JSON transport layer.
-
-The example may be modified and extended over time as the Mini Server functionality evolves.
-
-## Template Application
-
-The `template` application is intended to provide a clean starting point for new web applications.
-
-It should initially contain the same minimal functional demonstration as the example application.
-
-The template should remain intentionally simple.
-
-Developers should be able to copy the template directory and use the copy as the basis for a new application.
-
-The distributed template should not contain application-specific business logic.
-
-## Initial Page Content
-
-The template should contain a minimal visible example demonstrating that the page is being served correctly.
-
-The initial content should include the text:
-
-Hello Mini Webserver
-
-The source should also contain a clear developer-facing indication that the demonstration content may be replaced with the developer's own application.
-
-The exact visual appearance is not part of this requirement.
-
-## API Demonstration
-
-The example and template applications must demonstrate use of the shared JavaScript API.
-
-The demonstration must use:
-
-MiniApi.readSection(section)
-
-MiniApi.readAll()
-
-MiniApi.write(data)
-
-MiniApi.removeSection(section)
-
-MiniApi.clear()
-
-Application code should work with native JavaScript objects and arrays.
-
-The demonstration must not require manual JSON.stringify() or JSON.parse() calls for normal MiniApi usage.
-
-## Demonstration Data
-
-Each application must use its own persistence file.
+Developers create a new application by extracting or copying the template into a new first-level application directory below `www/`.
 
 For example:
 
+    www/my-app/
+
+The resulting application must work without application-specific changes to the Java server.
+
+## Example Application
+
+The `example` application is the maintained reference implementation for Mini Server.
+
+It must provide a simple browser-based demonstration of the public persistence API.
+
+The demonstration must make it possible to exercise:
+
+- Read one section
+- Read all stored data
+- Write one or more sections
+- Remove one section
+- Clear stored data
+
+The example application must use the shared:
+
+    www/_shared/mini-api.js
+
+library rather than implementing its own HTTP or JSON transport layer.
+
+The example application may be modified and extended as Mini Server evolves.
+
+Its persistence data is stored separately at:
+
     www/example/data/data.json
 
-and:
+## Template Package
 
-    www/template/data/data.json
+The reusable starter template is distributed as:
 
-During normal MiniApi usage, each application must automatically operate on the persistence data belonging to its own site namespace.
+    miniweb-template.zip
+
+The archive is stored outside the `www` web root and is not itself a hosted Mini Server application.
+
+The template contents must be suitable for use as a new first-level application below `www/`.
+
+A newly created application should have a structure similar to:
+
+    www/<site>/
+    ├── index.html
+    ├── assets/
+    └── data/
+        └── data.json
+
+Additional files may be included when required by the template demonstration.
+
+The template must use the shared Mini Server JavaScript library from:
+
+    /_shared/mini-api.js
+
+Shared Mini Server functionality must not be duplicated unnecessarily inside the template.
+
+The template should remain intentionally small, application-neutral, and suitable as a clean starting point for developers.
+
+## Initial Template Content
+
+The template must contain a minimal visible example demonstrating that the application is being served correctly and can access its persistence data through MiniApi.
+
+The visible example must include:
+
+    Hello Mini Webserver
+
+The displayed value must be obtained from the persistence data of the application created from the template through:
+
+    MiniApi.readSection("start")
+
+rather than being used only as hard-coded page text.
+
+The template persistence data must therefore provide a `start` section containing the value required for this demonstration.
+
+The source must also contain a clear developer-facing indication that the demonstration content may be replaced with the developer's own application.
+
+The exact visual appearance is not part of this requirement.
+
+## MiniApi Demonstration
+
+Both the maintained example application and the reusable template must demonstrate the public MiniApi interface:
+
+    MiniApi.readSection(section)
+    MiniApi.readAll()
+    MiniApi.write(data)
+    MiniApi.removeSection(section)
+    MiniApi.clear()
+
+Application code must work with native JavaScript objects and arrays.
+
+The demonstration must not require manual `JSON.stringify()` or `JSON.parse()` calls for normal MiniApi usage.
+
+## Persistence Scoping
+
+The example application uses:
+
+    www/example/data/data.json
+
+A new application created from the template receives its own persistence file below its own site directory.
+
+For example:
+
+    www/my-app/data/data.json
+
+During normal MiniApi usage, requests are automatically scoped to the site namespace of the current application.
 
 For example, MiniApi calls made from:
 
     /example/
 
-must normally target:
+normally target:
 
     /example/api/
 
 while MiniApi calls made from:
 
-    /template/
+    /my-app/
 
-must normally target:
+normally target:
 
-    /template/api/
+    /my-app/api/
 
-The example and template applications must not share the same persistence file or accidentally map normal persistence operations to another application's data.
+Different application directories must not accidentally share the same persistence file.
 
-This separation is based on URL namespaces and separate persistence locations.
+This separation is based on URL namespaces and controlled persistence path mapping.
 
-It is not an authentication or authorization boundary.
+It is not an authentication or authorization boundary between deliberately interacting applications.
 
-Deliberately written JavaScript may explicitly send HTTP requests to another valid application's API namespace because applications hosted by one Mini Server instance normally share the same HTTP origin.
-
-The demonstration applications are therefore assumed to belong to the same trusted local environment.
-
-The demonstration data should remain simple and neutral.
-
-Application-specific example data should not create unnecessary dependencies or assumptions about future use cases.
+Applications hosted by one Mini Server instance are considered part of the same trusted local environment.
 
 ## API Documentation
 
-The example and template content should provide enough information for a developer to understand how the shared API is used.
+The example application and template content must provide enough information for a developer to understand normal MiniApi usage.
 
-The documentation may be presented directly in the application, in accompanying files, or through a combination of both.
+At minimum, developers must be able to determine:
 
-At minimum, developers should be able to determine:
-
-- How to include mini-api.js
-- How to read one section
-- How to read all data
-- How to write data
-- How to remove a section
-- How to clear data
+- How to include `mini-api.js`
+- How to read one section with `MiniApi.readSection(section)`
+- How to read all data with `MiniApi.readAll()`
+- How to write data with `MiniApi.write(data)`
+- How to remove one section with `MiniApi.removeSection(section)`
+- How to clear data with `MiniApi.clear()`
 - That native JavaScript objects and arrays can be used directly
-- That each application automatically operates on its own data file
+- That MiniApi automatically scopes normal requests to the current application
+- That each application has its own persistence file
+- That persistence files are accessed through the JSON API rather than through direct static file access
 
 ## Independence from Server Implementation
 
-The example and template applications must interact with Mini Server through the documented browser-side API.
+The example application and applications created from the template must interact with Mini Server through the documented browser-side API.
 
 They must not depend on internal Java implementation details.
 
-A developer creating a new application from the template should not need to modify the Java server for normal application-specific content.
+A developer creating a new application from the template must not need to modify the Java server for normal application-specific content.
 
 ## Acceptance Criteria
 
 REQ-005 is fulfilled when all of the following are true:
 
-- www/example/ exists.
-- www/template/ exists.
-- Both applications contain a working index.html.
-- Both applications have their own data/data.json file.
-- Both applications use the shared www/_shared/mini-api.js library.
-- The example application demonstrates read.
-- The example application demonstrates readAll.
-- The example application demonstrates write.
-- The example application demonstrates remove.
-- The example application demonstrates clear.
-- The template provides the same initial minimal API demonstration.
-- The template contains the visible text "Hello Mini Webserver".
-- The template clearly indicates that the demonstration content may be replaced by the developer.
+- `www/example/` exists.
+- The example application contains a working `index.html`.
+- The example application has its own `data/data.json`.
+- The example application uses the shared `www/_shared/mini-api.js` library.
+- The example application demonstrates `MiniApi.readSection(section)`.
+- The example application demonstrates `MiniApi.readAll()`.
+- The example application demonstrates `MiniApi.write(data)`.
+- The example application demonstrates `MiniApi.removeSection(section)`.
+- The example application demonstrates `MiniApi.clear()`.
+- `miniweb-template.zip` is included in the distribution.
+- The template archive is stored outside the `www` web root.
+- A permanent `www/template/` application is not required.
+- The template can be extracted or copied into a new first-level application directory below `www/`.
+- An application created from the template uses the shared `mini-api.js` library.
+- An application created from the template receives its own `data/data.json` persistence file.
+- The template contains a visible `Hello Mini Webserver` demonstration.
+- The displayed `Hello Mini Webserver` value is obtained through `MiniApi.readSection("start")`.
+- The template clearly indicates that its demonstration content may be replaced by the developer.
 - Application code works with native JavaScript objects and arrays.
-- Manual JSON.stringify() and JSON.parse() are not required for normal MiniApi usage.
-- Normal MiniApi usage in the example and template applications is automatically scoped to each application's own API namespace and persistence file.
-- A developer can copy the template and use it as the basis for another application without requiring application-specific Java server changes.
-- The included documentation explains the basic MiniApi usage.
+- Manual `JSON.stringify()` and `JSON.parse()` are not required for normal MiniApi usage.
+- Normal MiniApi usage is automatically scoped to the current application's API namespace and persistence file.
+- A developer can create another application from the template without application-specific Java server changes.
+- The included documentation explains basic MiniApi usage.
 
 ## Constraints
 
-The example and template applications should remain intentionally small.
+The example application and template must remain intentionally small.
 
-Their purpose is to demonstrate Mini Server, not to introduce a full frontend framework or complex application architecture.
+Their purpose is to demonstrate Mini Server and provide a starting point, not to introduce a full frontend framework or complex application architecture.
 
-The content should use English for source code, comments, labels, and developer documentation.
+The template must remain application-neutral.
+
+The content must use English for source code, comments, labels, and developer documentation.
+
+The template archive must not be placed inside the served `www` web root.
 
 ## Related Decisions
 
 - D-006 — Generic Server-Side Data Handling
 - D-007 — One JSON Data File per Application
+- D-008 — Application Scope Is Derived from the URL
 - D-009 — Shared Central API Implementation
 - D-010 — Shared JavaScript API Library
 - D-011 — Native JavaScript Objects and Arrays
-- D-012 — Example and Template Applications
+- D-012 — Example Application and Reusable Template Package
 - D-013 — English Repository Language
+- D-015 — Persistence Data Is Not Served as Static Content
 - D-016 — Application Separation Is Namespace Isolation, Not Authentication
 
 ## Related Architecture
@@ -235,7 +262,7 @@ Relevant sections include:
 
 - Web Application Model
 - Shared JavaScript Client Library
-- Example and Template Applications
+- Example Application and Template Package
 - Application Isolation
 
 ## Related Tasks

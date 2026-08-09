@@ -62,7 +62,7 @@ The following requirements are approved for the initial v1.0 implementation:
 - REQ-004 — JavaScript Client API
   - `active/REQ-004-javascript-client-api.md`
 
-- REQ-005 — Example and Template Applications
+- REQ-005 — Example Application and Template Package
   - `active/REQ-005-example-and-template.md`
 
 - REQ-006 — Startup and Browser Launch

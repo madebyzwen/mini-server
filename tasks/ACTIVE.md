@@ -314,7 +314,7 @@ Acceptance:
 
 ---
 
-## T-009 — Create Template Application
+## T-009 — Create Reusable Template Package
 
 Status: Planned
 
@@ -324,26 +324,48 @@ Related requirements:
 
 Description:
 
-Create:
+Create the reusable starter template and distribute it as:
 
-www/template/
+    miniweb-template.zip
 
-The initial template should provide the same minimal API demonstration as the example application while remaining suitable as a clean starting point for developers.
+The template archive must be stored outside the `www` web root.
 
-The page must include:
+The archive must contain application content that can be extracted or copied into a new first-level application directory below `www/`.
 
-Hello Mini Webserver
+For example:
 
-and a clear indication that the demonstration content can be replaced with the developer's own application.
+    www/my-app/
+
+The extracted template must use the shared:
+
+    /_shared/mini-api.js
+
+library and demonstrate the public MiniApi interface.
+
+The template must include a minimal visible:
+
+    Hello Mini Webserver
+
+demonstration.
+
+The displayed value must be loaded from the application's persistence data using:
+
+    MiniApi.readSection("start")
+
+The template must remain application-neutral and suitable as a clean starting point for developers.
 
 Acceptance:
 
-- The template application loads successfully.
-- It uses the shared mini-api.js library.
-- It has its own data/data.json file.
-- It demonstrates the public API.
-- It remains independent from the example application's data.
-- It can be copied as the basis for a new application.
+- `miniweb-template.zip` is created.
+- The archive is stored outside the `www` web root.
+- The template can be extracted into a new first-level application directory below `www/`.
+- The extracted application loads successfully.
+- The extracted application uses the shared `mini-api.js` library.
+- The extracted application has its own `data/data.json` persistence file.
+- The template demonstrates the public MiniApi interface.
+- `Hello Mini Webserver` is displayed using data returned by `MiniApi.readSection("start")`.
+- The template clearly indicates that its demonstration content may be replaced by the developer.
+- Creating a new application from the template does not require application-specific Java server changes.
 
 ---
 
@@ -489,7 +511,7 @@ Acceptance:
 - Each acceptance criterion is either verified or explicitly documented as incomplete.
 - No known incomplete requirement is presented as finished.
 - The example application works end to end.
-- The template application works end to end.
+- The template package can be extracted into a new application that works end to end.
 - The Java 8 target runtime has been verified.
 - The project is ready for release preparation only when all required criteria are satisfied.
 

@@ -219,11 +219,11 @@ operates on:
 
 while:
 
-    /template/api/read?section=settings
+    /dashboard/api/read?section=settings
 
 operates on:
 
-    www/template/data/data.json
+    www/dashboard/data/data.json
 
 The server must derive the persistence location from the site namespace in the request path.
 

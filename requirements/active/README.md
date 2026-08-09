@@ -14,7 +14,7 @@ The following requirements are active:
 - REQ-002 — Dynamic Port Allocation
 - REQ-003 — JSON Persistence API
 - REQ-004 — JavaScript Client API
-- REQ-005 — Example and Template Applications
+- REQ-005 — Example Application and Template Package
 - REQ-006 — Startup and Browser Launch
 - REQ-007 — Error Handling and File Permissions
 - REQ-008 — Runtime and Distribution

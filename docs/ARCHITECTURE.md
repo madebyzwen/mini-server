@@ -26,15 +26,11 @@ The basic runtime structure is:
 mini-server/
 ├── server/
 │   └── ...
+├── miniweb-template.zip
 └── www/
     ├── _shared/
     │   └── mini-api.js
     ├── example/
-    │   ├── index.html
-    │   ├── assets/
-    │   └── data/
-    │       └── data.json
-    ├── template/
     │   ├── index.html
     │   ├── assets/
     │   └── data/
@@ -56,9 +52,9 @@ Examples:
 
 ```text
 www/example/
-www/template/
 www/dashboard/
 www/notes/
+www/my-app/
 ```
 
 A web application owns its own:
@@ -245,11 +241,11 @@ is mapped to:
 
 while:
 
-    /template/api/read?section=settings
+    /dashboard/api/read?section=settings
 
 is mapped to:
 
-    www/template/data/data.json
+    www/dashboard/data/data.json
 
 The server derives the target site from the request path.
 
@@ -361,22 +357,51 @@ and sends API requests below:
 
 The site should not normally need to be configured manually by application code.
 
-## Example and Template Applications
+## Example Application and Template Package
 
-The distributed `www` content will initially include two applications:
+The distributed web root contains a maintained example application:
 
-```text
-www/example/
-www/template/
-```
+    www/example/
 
-Both initially provide the same minimal demonstration of the available API.
+The example application serves as the working reference implementation and demonstrates the public MiniApi interface.
 
-`template` serves as an unchanged starting point for developers.
+It may evolve together with Mini Server as functionality is added or refined.
 
-`example` may be modified or used as a working demonstration.
+A reusable starter template is distributed separately as:
 
-The example content will demonstrate the central API operations and the shared JavaScript client library.
+    miniweb-template.zip
+
+The template archive is stored outside the `www` web root.
+
+A permanent:
+
+    www/template/
+
+directory is not required in the normal Mini Server distribution.
+
+Developers create a new application by extracting or copying the template into a new first-level directory below `www/`.
+
+For example:
+
+    www/my-app/
+
+The extracted application then receives its own persistence location:
+
+    www/my-app/data/data.json
+
+and uses the shared browser-side API library from:
+
+    www/_shared/mini-api.js
+
+The template remains intentionally small and application-neutral.
+
+It demonstrates the public MiniApi operations and includes a minimal visible:
+
+    Hello Mini Webserver
+
+example.
+
+The template is intended to remain a clean starting point, while the `example` application is the maintained and potentially evolving demonstration.
 
 ## Network Boundary
 

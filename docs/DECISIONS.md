@@ -175,7 +175,7 @@ Separate data files keep individual applications simple and separated while pres
 Examples:
 
     www/example/data/data.json
-    www/template/data/data.json
+    www/dashboard/data/data.json
     www/dashboard/data/data.json
 
 Each API namespace maps predictably to the persistence file belonging to the site identified by that request URL.
@@ -325,30 +325,59 @@ JSON transport is an implementation detail of the shared API library and should 
 
 ---
 
-## D-012 — Example and Template Applications
+## D-012 — Example Application and Reusable Template Package
 
 ### Decision
 
-The initial distribution contains two example application directories:
+The initial distribution contains a working example application at:
 
-```text
-www/example/
-www/template/
-```
+    www/example/
 
-Both start with equivalent minimal demonstration content.
+The example application is part of the normal Mini Server web root and serves as the maintained reference implementation and API demonstration.
+
+A reusable starter template is distributed separately as:
+
+    miniweb-template.zip
+
+The template archive is stored outside the `www` web root and is not itself served as web content.
+
+The distribution does not require a permanently installed:
+
+    www/template/
+
+application.
+
+Developers may extract or copy the template into a new first-level application directory below `www/` when creating a new application.
+
+For example:
+
+    www/my-app/
 
 ### Rationale
 
-The `example` application provides a working demonstration.
+The example application and the reusable template have different purposes.
 
-The `template` application provides a clean starting point for developers.
+The `example` application is a living demonstration and may evolve as Mini Server functionality changes.
+
+The template should remain a clean and unchanged starting point that developers can copy when creating a new application.
+
+Keeping the template as a separate archive prevents the distributed starter template from being modified accidentally during normal use or development of the example application.
+
+Keeping the archive outside `www/` also prevents the template package itself from becoming normal static web content.
 
 ### Consequences
 
-- `template` should remain an unchanged starting template.
-- `example` may be modified to demonstrate functionality.
-- Both should initially document and demonstrate the available API.
+- `www/example/` is included as the maintained demonstration application.
+- `example` may be updated as Mini Server evolves.
+- `miniweb-template.zip` provides the reusable clean starting point for new applications.
+- The template archive is distributed outside the `www` web root.
+- A permanent `www/template/` directory is not required in the normal distribution.
+- Developers create a new application by extracting or copying the template into a new first-level directory below `www/`.
+- The extracted template must work without application-specific changes to the Java server.
+- The template uses the shared `www/_shared/mini-api.js` library.
+- The template demonstrates the public MiniApi interface.
+- The template contains a minimal visible `Hello Mini Webserver` example.
+- The template remains application-neutral and contains no application-specific business logic.
 
 ---
 

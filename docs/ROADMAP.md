@@ -21,7 +21,7 @@ The initial version should establish the core foundation:
 - Per-application JSON data storage
 - Shared `mini-api.js` client library
 - Example application
-- Reusable template application
+- Reusable template package distributed as `miniweb-template.zip`
 - Automatic allocation of an available local port
 - Automatic browser launch
 
