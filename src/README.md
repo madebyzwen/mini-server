@@ -74,7 +74,7 @@ The Java implementation is responsible for:
 - Serving static web content
 - Routing API requests
 - Determining site scope
-- Enforcing application isolation
+- Enforcing URL-derived site scoping and persistence path separation
 - Reading and writing JSON persistence files
 - Returning appropriate HTTP responses
 - Reporting runtime failures
@@ -112,7 +112,7 @@ Source code should:
 - Avoid machine-specific paths
 - Avoid embedded credentials or secrets
 - Handle failures explicitly
-- Preserve application isolation
+- Preserve URL-derived site scoping and controlled persistence path mapping
 - Avoid exposing arbitrary filesystem access
 - Remain consistent with active requirements and architectural decisions
 

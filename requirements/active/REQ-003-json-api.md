@@ -207,21 +207,58 @@ The implementation should minimize the risk of corrupting an existing valid data
 
 ## Application Isolation
 
-Every API operation must remain scoped to the site identified by the request URL.
+Every API operation must be scoped to the site identified by the request URL.
 
-For example, requests below:
+For example:
 
-/example/api/
+    /example/api/read?section=settings
 
-may only operate on:
+operates on:
 
-www/example/data/data.json
+    www/example/data/data.json
 
-They must not use arbitrary filesystem paths to read, modify, remove, clear, or otherwise access persistence files outside the site identified by the API request path.
+while:
 
-Site scoping prevents an API request from supplying a different persistence location directly.
+    /template/api/read?section=settings
 
-The exact security boundary between deliberately interacting local web applications is defined separately from this filesystem scoping rule.
+operates on:
+
+    www/template/data/data.json
+
+The server must derive the persistence location from the site namespace in the request path.
+
+The client must not be able to provide an arbitrary filesystem path or persistence location through query parameters, request bodies, headers, or other client-controlled input.
+
+A request within one site namespace must therefore never be redirected to another persistence file through a client-supplied filesystem location.
+
+### Security Scope
+
+This site separation is namespace and filesystem isolation, not authentication or authorization between hosted applications.
+
+Applications hosted by one Mini Server instance normally share the same HTTP origin.
+
+A deliberately written application may therefore send a request directly to another valid site's API namespace.
+
+For example, JavaScript loaded from:
+
+    /example/
+
+may deliberately request:
+
+    /template/api/readAll
+
+Such a request is treated as a request to the `template` namespace because that namespace was explicitly addressed in the request URL.
+
+Mini Server v1.0 does not authenticate applications against each other and does not attempt to prevent this deliberate cross-namespace request.
+
+The isolation requirement guarantees that:
+
+- persistence locations are derived and controlled by the server;
+- arbitrary filesystem paths cannot be supplied by clients;
+- each site namespace maps predictably to its own persistence file;
+- normal MiniApi usage remains scoped automatically to the current application.
+
+Hosted applications must therefore be considered part of the same trusted local environment rather than mutually untrusted security principals.
 
 ## Invalid Requests
 
@@ -296,6 +333,7 @@ The persistence mechanism must remain file-based and must not require a database
 - D-009 — Shared Central API Implementation
 - D-014 — Not Intended for Public Internet Use
 - D-015 — Persistence Data Is Not Served as Static Content
+- D-016 — Application Separation Is Namespace Isolation, Not Authentication
 
 ## Related Architecture
 

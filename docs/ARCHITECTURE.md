@@ -225,32 +225,70 @@ The web application defines the meaning and internal structure of the stored dat
 
 ## Application Isolation
 
-Applications must be isolated from each other's persistent data.
+Mini Server separates applications by URL namespace and persistence location.
 
-A request below:
+Each application uses its own persistence file:
 
-```text
-/example/api/
-```
+    www/<site>/data/data.json
 
-may only access:
+and its own API namespace:
 
-```text
-www/example/data/data.json
-```
+    /<site>/api/
 
-It must not be possible for that API namespace to read or modify:
+For example:
 
-```text
-www/dashboard/data/data.json
-www/template/data/data.json
-```
+    /example/api/read?section=settings
 
-or any data belonging to another application.
+is mapped to:
 
-The site scope is determined by the server from the request path.
+    www/example/data/data.json
 
-The client must not be allowed to supply an arbitrary filesystem path for persistence operations.
+while:
+
+    /template/api/read?section=settings
+
+is mapped to:
+
+    www/template/data/data.json
+
+The server derives the target site from the request path.
+
+The client must not be allowed to provide an arbitrary filesystem path or persistence location.
+
+This prevents filesystem path manipulation and accidental mixing of persistence data between applications.
+
+### Security Scope
+
+Application separation is not an authentication or authorization boundary.
+
+Applications hosted by one Mini Server instance normally share the same HTTP origin:
+
+    http://127.0.0.1:<port>
+
+Different path prefixes therefore do not make the applications mutually isolated security principals.
+
+For example, JavaScript running from:
+
+    /example/
+
+could deliberately send a request to:
+
+    /template/api/readAll
+
+The server would process that request within the `template` namespace because the requested URL explicitly targets that namespace.
+
+Mini Server v1.0 does not provide authentication or authorization between hosted applications.
+
+Applications hosted together by one Mini Server instance must therefore be treated as part of the same trusted local environment.
+
+The isolation model guarantees:
+
+- predictable per-application persistence locations;
+- URL-derived site scoping;
+- prevention of arbitrary client-supplied persistence filesystem paths;
+- separation of normal application data during intended MiniApi usage.
+
+It does not guarantee protection against deliberately written code that explicitly calls another application's API namespace.
 
 ## Shared JavaScript Client Library
 

@@ -116,19 +116,43 @@ The demonstration must not require manual JSON.stringify() or JSON.parse() calls
 
 ## Demonstration Data
 
-Each application must use its own data file.
+Each application must use its own persistence file.
 
 For example:
 
-www/example/data/data.json
+    www/example/data/data.json
 
 and:
 
-www/template/data/data.json
+    www/template/data/data.json
 
-Actions performed in the example application must not modify the template application's data.
+During normal MiniApi usage, each application must automatically operate on the persistence data belonging to its own site namespace.
 
-Actions performed in the template application must not modify the example application's data.
+For example, MiniApi calls made from:
+
+    /example/
+
+must normally target:
+
+    /example/api/
+
+while MiniApi calls made from:
+
+    /template/
+
+must normally target:
+
+    /template/api/
+
+The example and template applications must not share the same persistence file or accidentally map normal persistence operations to another application's data.
+
+This separation is based on URL namespaces and separate persistence locations.
+
+It is not an authentication or authorization boundary.
+
+Deliberately written JavaScript may explicitly send HTTP requests to another valid application's API namespace because applications hosted by one Mini Server instance normally share the same HTTP origin.
+
+The demonstration applications are therefore assumed to belong to the same trusted local environment.
 
 The demonstration data should remain simple and neutral.
 
@@ -178,7 +202,7 @@ REQ-005 is fulfilled when all of the following are true:
 - The template clearly indicates that the demonstration content may be replaced by the developer.
 - Application code works with native JavaScript objects and arrays.
 - Manual JSON.stringify() and JSON.parse() are not required for normal MiniApi usage.
-- The example and template applications cannot modify each other's persistent data through their normal API namespace.
+- Normal MiniApi usage in the example and template applications is automatically scoped to each application's own API namespace and persistence file.
 - A developer can copy the template and use it as the basis for another application without requiring application-specific Java server changes.
 - The included documentation explains the basic MiniApi usage.
 
@@ -199,6 +223,7 @@ The content should use English for source code, comments, labels, and developer 
 - D-011 — Native JavaScript Objects and Arrays
 - D-012 — Example and Template Applications
 - D-013 — English Repository Language
+- D-016 — Application Separation Is Namespace Isolation, Not Authentication
 
 ## Related Architecture
 

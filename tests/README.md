@@ -67,7 +67,7 @@ Tests should include attempts such as:
 - Encoded traversal where relevant
 - Invalid site names
 - Arbitrary filesystem paths
-- Access to another site's data
+- Attempts to override the persistence location derived from the requested site namespace
 
 A successful test suite must not depend on exposing files outside the configured test web root.
 
@@ -80,7 +80,7 @@ Tests should confirm that:
 - Valid requests succeed.
 - Invalid requests fail.
 - Failed requests are not reported as successful.
-- One site cannot modify another site's data.
+- Requests cannot use client-supplied filesystem paths or persistence locations to redirect an API namespace to another site's data file.
 - Existing unrelated sections remain intact during partial writes.
 - Invalid JSON is detected.
 - Stored JSON remains valid after successful write operations.

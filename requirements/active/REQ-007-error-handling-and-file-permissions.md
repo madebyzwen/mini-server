@@ -98,7 +98,7 @@ Examples include:
 - Invalid JSON request bodies
 - Unsupported operations
 - Invalid application scope
-- Requests that violate application isolation
+- Requests that attempt to escape or override the persistence location derived from the requested site namespace
 - Attempts to access arbitrary filesystem paths
 
 A failed API request must not return a successful result.

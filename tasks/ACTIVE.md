@@ -135,7 +135,7 @@ Acceptance:
 
 ---
 
-## T-004 — Implement Site Detection and Isolation
+## T-004 — Implement Site Detection and Persistence Scoping
 
 Status: Planned
 
@@ -149,20 +149,26 @@ Description:
 
 Implement detection of the current site from the request path.
 
-The first application path component must determine which site owns the request.
+The first application path component must determine which site namespace owns the request.
 
-All persistence operations must remain scoped to:
+Persistence operations must map predictably to:
 
 www/<site>/data/data.json
 
-The client must not be able to provide an arbitrary filesystem path.
+based on the site namespace addressed by the request URL.
+
+The client must not be able to provide an arbitrary filesystem path or persistence location.
+
+This task provides namespace and filesystem scoping. It does not introduce authentication or authorization between hosted applications.
 
 Acceptance:
 
 - Site names are derived from request paths.
-- Requests are mapped to the correct site's data file.
-- One site cannot access another site's persistence file through the API.
-- Invalid or unsafe paths are rejected.
+- Requests are mapped to the persistence file belonging to the addressed site namespace.
+- Clients cannot override the derived persistence location with an arbitrary filesystem path or storage location.
+- Normal MiniApi usage is automatically scoped to the current application's API namespace.
+- Invalid or unsafe filesystem paths are rejected.
+- The implementation does not claim authentication or authorization isolation between hosted applications.
 
 ---
 

@@ -164,25 +164,35 @@ Each web application has its own JSON persistence file.
 
 The standard location is:
 
-```text
-www/<site>/data/data.json
-```
+    www/<site>/data/data.json
 
 ### Rationale
 
-Separate data files keep individual applications simple and isolated while preserving a predictable directory structure.
+Separate data files keep individual applications simple and separated while preserving a predictable directory structure.
 
 ### Consequences
 
 Examples:
 
-```text
-www/example/data/data.json
-www/template/data/data.json
-www/dashboard/data/data.json
-```
+    www/example/data/data.json
+    www/template/data/data.json
+    www/dashboard/data/data.json
 
-The API namespace of one application must not access another application's data file.
+Each API namespace maps predictably to the persistence file belonging to the site identified by that request URL.
+
+For example:
+
+    /example/api/
+
+maps to:
+
+    www/example/data/data.json
+
+The client must not be able to redirect that namespace to another persistence file by supplying an arbitrary filesystem path or storage location.
+
+This mapping provides namespace and filesystem separation but is not an authentication or authorization boundary between hosted applications.
+
+A deliberately written client may explicitly address another valid application's API namespace as described in D-016.
 
 ---
 
@@ -431,6 +441,60 @@ Keeping the persistence directory below the application directory while excludin
 - Static JSON files may still be served from other application locations when they are normal web application resources.
 - Static file path validation must detect and reject requests targeting the reserved persistence directory.
 - This rule protects the persistence API boundary but does not by itself provide authentication or a security boundary between deliberately interacting local applications.
+
+---
+
+## D-016 — Application Separation Is Namespace Isolation, Not Authentication
+
+### Decision
+
+Mini Server separates application persistence by URL namespace and filesystem location.
+
+Each application has its own persistence location:
+
+    www/<site>/data/data.json
+
+and its own API namespace:
+
+    /<site>/api/
+
+The server derives the target site from the request URL and does not allow the client to provide an arbitrary persistence filesystem path.
+
+This separation is intended to prevent accidental cross-site persistence access and filesystem path manipulation.
+
+It is not an authentication or authorization boundary between hosted applications.
+
+### Rationale
+
+All applications hosted by one Mini Server instance normally share the same HTTP origin:
+
+    http://127.0.0.1:<port>
+
+Browser same-origin rules therefore do not isolate applications merely because they use different URL path prefixes.
+
+For example, JavaScript loaded from:
+
+    /example/
+
+could deliberately send a request to:
+
+    /template/api/readAll
+
+The server would interpret that request as a request for the `template` namespace because the target site is derived from the requested URL.
+
+Preventing such deliberate interaction would require an authentication or authorization mechanism that is outside the intended scope of the lightweight initial implementation.
+
+### Consequences
+
+- Each API request may access only the persistence location derived from that request's site namespace.
+- Clients cannot provide arbitrary filesystem paths to select another persistence file.
+- `MiniApi` automatically uses the current application's site namespace for normal application code.
+- Separate application directories and persistence files prevent accidental mixing of application data.
+- Hosted applications must not be treated as mutually untrusted security principals.
+- A deliberately written application can request another application's API namespace.
+- Mini Server v1.0 does not provide authentication or authorization between hosted applications.
+- Applications hosted together by one Mini Server instance should therefore be considered part of the same trusted local environment.
+- Public internet exposure remains outside the supported project scope.
 
 ---
 
