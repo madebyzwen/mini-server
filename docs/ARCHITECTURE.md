@@ -88,17 +88,43 @@ Static resources are served from the `www` directory.
 
 A request such as:
 
-```text
-/example/index.html
-```
+    /example/index.html
 
 maps to:
 
-```text
-www/example/index.html
-```
+    www/example/index.html
+
+Normal application resources such as HTML, CSS, JavaScript, images, text files, and static JSON resources may be served from locations inside the application's directory.
 
 The server must prevent path traversal outside the configured `www` root.
+
+### Reserved Persistence Directory
+
+The directory:
+
+    www/<site>/data/
+
+is reserved for Mini Server persistence.
+
+It is not part of the application's publicly served static content.
+
+A direct request such as:
+
+    /example/data/data.json
+
+must not return:
+
+    www/example/data/data.json
+
+Files below the reserved persistence directory must not be accessible through the normal static file handler.
+
+Persistent application data is accessed exclusively through the site's JSON API.
+
+This restriction applies specifically to the `data` directory directly below an application directory. It does not prohibit an application from serving ordinary static JSON files from other locations such as:
+
+    www/example/assets/config.json
+
+The persistence directory remains below the application directory so that an application and its data retain a predictable, portable structure, while the API remains the controlled access path for persistent data.
 
 ## Central API
 

@@ -24,7 +24,7 @@ www/
 
 as its web root.
 
-Files below this directory must be accessible through HTTP using paths relative to the web root.
+Files below this directory must be accessible through HTTP using paths relative to the web root, except for directories or resources explicitly reserved by Mini Server.
 
 Example:
 
@@ -72,6 +72,42 @@ www/
 
 The client must not be able to supply an arbitrary filesystem path.
 
+## Reserved Persistence Directory
+
+The directory:
+
+www/<site>/data/
+
+is reserved for Mini Server persistence.
+
+Files below this directory must not be served through the normal static file handler.
+
+In particular, a request such as:
+
+/example/data/data.json
+
+must not return the contents of:
+
+www/example/data/data.json
+
+Persistent application data must be accessed through the site's JSON persistence API.
+
+The reserved persistence rule applies specifically to the `data` directory directly below an application directory.
+
+It does not prohibit applications from using ordinary static JSON resources elsewhere below their application directory.
+
+For example:
+
+/example/assets/config.json
+
+may resolve to:
+
+www/example/assets/config.json
+
+when that file exists and is intended as a normal static application resource.
+
+A request targeting the reserved persistence directory must result in an appropriate non-successful HTTP response and must not expose the requested persistence data.
+
 ## Directory Requests
 
 When a request targets an application directory without explicitly naming a file, the server should serve the application's default entry page when available.
@@ -101,6 +137,8 @@ At minimum, the implementation should support sensible content types for:
 - Plain text
 - Common image formats
 
+JSON support in the static file handler applies only to normal static application resources and does not override the reserved persistence directory rule.
+
 Unknown file types may be served using a generic binary content type.
 
 ## Missing Resources
@@ -113,7 +151,7 @@ A missing file should normally result in:
 
 ## Security Boundary
 
-Static file serving must remain limited to the configured web root.
+Static file serving must remain limited to the configured web root and must respect Mini Server reserved directories.
 
 The implementation must not expose:
 
@@ -122,17 +160,22 @@ The implementation must not expose:
 - User home directories
 - Arbitrary absolute paths
 - Parent directories of the web root
+- Persistence files below `www/<site>/data/`
 
 ## Acceptance Criteria
 
 REQ-001 is fulfilled when all of the following are true:
 
 - The server uses www/ as its web root.
-- Existing files below www/ can be requested through matching HTTP paths.
+- Existing static files below www/ can be requested through matching HTTP paths unless they are located in a reserved Mini Server directory.
 - Multiple independent application directories can be served from the same web root.
 - A request for /<site>/ resolves only within www/<site>/.
 - A request for /<site>/ serves index.html when the file exists.
 - Static HTML, CSS, JavaScript, JSON, text, and common image files can be served.
+- Static JSON resources outside the reserved persistence directory can be served normally.
+- Files below www/<site>/data/ are not served by the static file handler.
+- A request for /<site>/data/data.json does not expose the site's persistence data.
+- Persistent application data is accessed through the site's JSON API rather than through direct static file access.
 - Missing files return an appropriate HTTP error response.
 - Directory listings are not exposed automatically.
 - Path traversal outside www/ is prevented.
@@ -151,6 +194,7 @@ The implementation must remain compatible with the project's approved Java runti
 
 - D-001 — Java 8 Compatibility
 - D-014 — Not Intended for Public Internet Use
+- D-015 — Persistence Data Is Not Served as Static Content
 
 ## Related Architecture
 

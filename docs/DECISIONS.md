@@ -391,6 +391,49 @@ This limitation should remain clearly documented for users and developers.
 
 ---
 
+## D-015 — Persistence Data Is Not Served as Static Content
+
+### Decision
+
+Application persistence data stored below:
+
+www/<site>/data/
+
+must not be served directly by the static file handler.
+
+In particular, a request such as:
+
+/example/data/data.json
+
+must not return the contents of:
+
+www/example/data/data.json
+
+Persistent application data may only be accessed through the site's JSON API.
+
+The `data` directory directly below an application directory is therefore reserved for Mini Server persistence and is not part of the application's publicly served static content.
+
+### Rationale
+
+The persistence file is located below the `www` directory to keep each web application portable as a self-contained directory.
+
+However, allowing the static file handler to expose that persistence file would bypass the JSON API completely.
+
+API behavior such as section-based access, validation, error handling, and controlled persistence would become ineffective if clients could read the complete data file directly through a static URL.
+
+Keeping the persistence directory below the application directory while excluding it from static file serving preserves both portability and the intended API boundary.
+
+### Consequences
+
+- `www/<site>/data/` is a reserved Mini Server directory.
+- Files below that directory must not be returned by normal static file requests.
+- `www/<site>/data/data.json` is accessed through the central JSON API only.
+- Static JSON files may still be served from other application locations when they are normal web application resources.
+- Static file path validation must detect and reject requests targeting the reserved persistence directory.
+- This rule protects the persistence API boundary but does not by itself provide authentication or a security boundary between deliberately interacting local applications.
+
+---
+
 ## Changing Decisions
 
 Existing decisions should not be silently rewritten when project requirements change.
