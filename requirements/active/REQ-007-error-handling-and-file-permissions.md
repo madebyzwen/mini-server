@@ -235,10 +235,10 @@ See:
 
 Relevant implementation tasks include:
 
-- T-008 — Create Example Application
-- T-009 — Create Reusable Template Package
+- T-005 — Implement JSON Persistence Layer
+- T-006 — Implement HTTP API Endpoints
+- T-011 — Implement Error Handling and Diagnostics
 - T-013 — Add Automated Tests
-- T-014 — Verify Initial Release Scope
 
 ## Target Release
 

@@ -571,8 +571,9 @@ See:
 
 Relevant implementation tasks include:
 
-- T-002 — Implement Dynamic Local Server Startup
-- T-010 — Implement Edge Browser Launch
+- T-004 — Implement Site Detection and Persistence Scoping
+- T-005 — Implement JSON Persistence Layer
+- T-006 — Implement HTTP API Endpoints
 - T-013 — Add Automated Tests
 
 ## Target Release
