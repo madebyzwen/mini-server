@@ -147,20 +147,6 @@ Write-related API operations must return a clear error when the required write p
 
 The server must not require write access to unrelated application directories.
 
-## Optional Read-Only Indicator
-
-A site may optionally use a file named:
-
-readonly.flag
-
-as a convenient indicator that write operations should not be performed for that site.
-
-This mechanism is a convenience feature and is not a security boundary.
-
-Filesystem permissions remain authoritative.
-
-The exact behavior of `readonly.flag` may be finalized during implementation.
-
 ## Logging
 
 The server should provide useful diagnostic information for failures during development and operation.
