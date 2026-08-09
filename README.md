@@ -70,6 +70,8 @@ A German documentation section will be added to this README as the project docum
 
 ## Development
 
-Implementation has not started yet.
+Application implementation has not started yet.
+
+The v1.0 architecture, requirements, decisions, and implementation tasks have been defined and prepared for implementation through Codex.
 
 See `AGENTS.md` for the repository workflow and instructions for coding agents.

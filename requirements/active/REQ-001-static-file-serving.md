@@ -211,8 +211,15 @@ Relevant sections include:
 
 ## Related Tasks
 
-No implementation tasks have been assigned yet.
+See:
+
+    tasks/ACTIVE.md
+
+Relevant implementation tasks include:
+
+- T-003 — Implement Static File Serving
+- T-013 — Add Automated Tests
 
 ## Target Release
 
-Initial release
+v1.0

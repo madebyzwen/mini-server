@@ -267,8 +267,17 @@ Relevant sections include:
 
 ## Related Tasks
 
-No implementation tasks have been assigned yet.
+See:
+
+    tasks/ACTIVE.md
+
+Relevant implementation tasks include:
+
+- T-008 — Create Example Application
+- T-009 — Create Reusable Template Package
+- T-013 — Add Automated Tests
+- T-014 — Verify Initial Release Scope
 
 ## Target Release
 
-Initial release
+v1.0

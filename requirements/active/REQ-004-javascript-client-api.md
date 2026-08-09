@@ -474,8 +474,17 @@ Relevant sections include:
 
 ## Related Tasks
 
-No implementation tasks have been assigned yet.
+See:
+
+    tasks/ACTIVE.md
+
+Relevant implementation tasks include:
+
+- T-007 — Implement Shared mini-api.js Library
+- T-008 — Create Example Application
+- T-009 — Create Reusable Template Package
+- T-013 — Add Automated Tests
 
 ## Target Release
 
-Initial release
+v1.0

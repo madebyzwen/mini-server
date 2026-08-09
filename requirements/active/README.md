@@ -15,7 +15,7 @@ The following requirements are active:
 - REQ-003 — JSON Persistence API
 - REQ-004 — JavaScript Client API
 - REQ-005 — Example Application and Template Package
-- REQ-006 — Startup and Browser Launch
+- REQ-006 — Startup, Browser Launch, and Server Lifetime
 - REQ-007 — Error Handling and File Permissions
 - REQ-008 — Runtime and Distribution
 

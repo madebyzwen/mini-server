@@ -565,8 +565,16 @@ Relevant sections include:
 
 ## Related Tasks
 
-No implementation tasks have been assigned yet.
+See:
+
+    tasks/ACTIVE.md
+
+Relevant implementation tasks include:
+
+- T-002 — Implement Dynamic Local Server Startup
+- T-010 — Implement Edge Browser Launch
+- T-013 — Add Automated Tests
 
 ## Target Release
 
-Initial release
+v1.0

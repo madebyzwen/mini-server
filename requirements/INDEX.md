@@ -65,7 +65,7 @@ The following requirements are approved for the initial v1.0 implementation:
 - REQ-005 — Example Application and Template Package
   - `active/REQ-005-example-and-template.md`
 
-- REQ-006 — Startup and Browser Launch
+- REQ-006 — Startup, Browser Launch, and Server Lifetime
   - `active/REQ-006-startup-and-browser-launch.md`
 
 - REQ-007 — Error Handling and File Permissions

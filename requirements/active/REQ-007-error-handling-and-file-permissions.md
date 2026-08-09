@@ -211,7 +211,7 @@ Application-level convenience features must not be described as security mechani
 
 - REQ-001 — Static File Serving
 - REQ-003 — JSON Persistence API
-- REQ-006 — Startup and Browser Launch
+- REQ-006 — Startup, Browser Launch, and Server Lifetime
 
 ## Related Architecture
 
@@ -229,8 +229,17 @@ Relevant sections include:
 
 ## Related Tasks
 
-No implementation tasks have been assigned yet.
+See:
+
+    tasks/ACTIVE.md
+
+Relevant implementation tasks include:
+
+- T-008 — Create Example Application
+- T-009 — Create Reusable Template Package
+- T-013 — Add Automated Tests
+- T-014 — Verify Initial Release Scope
 
 ## Target Release
 
-Initial release
+v1.0
