@@ -43,24 +43,31 @@ public final class MiniServerStartup {
     };
 
     private final Path injectedRuntimeDirectory;
+    private final Path injectedWebRoot;
     private final Settings settings;
     private final ServerFactory serverFactory;
     private final StartupObserver observer;
 
     public MiniServerStartup() {
-        this(null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
+        this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
     }
 
     MiniServerStartup(Path runtimeDirectory, Settings settings) {
-        this(runtimeDirectory, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
+        this(runtimeDirectory, null, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
+    }
+
+    MiniServerStartup(Path runtimeDirectory, Path webRoot, Settings settings) {
+        this(runtimeDirectory, webRoot, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
     }
 
     MiniServerStartup(
             Path runtimeDirectory,
+            Path webRoot,
             Settings settings,
             ServerFactory serverFactory,
             StartupObserver observer) {
         this.injectedRuntimeDirectory = runtimeDirectory;
+        this.injectedWebRoot = webRoot;
         this.settings = settings;
         this.serverFactory = serverFactory;
         this.observer = observer;
@@ -106,8 +113,10 @@ public final class MiniServerStartup {
 
             stateStore.invalidate();
 
+            StaticFileHandler staticFileHandler = createStaticFileHandler();
             InetAddress loopback = InetAddress.getByName(LOOPBACK_ADDRESS);
             httpServer = serverFactory.create(new InetSocketAddress(loopback, REQUESTED_PORT));
+            httpServer.createContext("/", staticFileHandler);
             httpServer.start();
             validateActiveAddress(httpServer.getAddress(), loopback);
 
@@ -155,6 +164,21 @@ public final class MiniServerStartup {
             return injectedRuntimeDirectory;
         }
         return LocalRuntimeDirectory.resolve();
+    }
+
+    private Path resolveWebRoot() throws StartupException {
+        if (injectedWebRoot != null) {
+            return injectedWebRoot;
+        }
+        return WebRootResolver.resolve();
+    }
+
+    private StaticFileHandler createStaticFileHandler() throws StartupException {
+        try {
+            return new StaticFileHandler(resolveWebRoot());
+        } catch (IOException exception) {
+            throw new StartupException("The Mini Server web root cannot be accessed.", exception);
+        }
     }
 
     private FileLock acquireStartupLock(FileChannel channel) throws StartupException, IOException {

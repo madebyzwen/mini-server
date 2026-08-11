@@ -2,14 +2,19 @@ package io.github.madebyzwen.miniserver;
 
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -55,8 +60,16 @@ class MiniServerStartupTest {
     @TempDir
     Path temporaryDirectory;
 
+    private Path testWebRoot;
+
     private final List<StartupResult> results = new ArrayList<StartupResult>();
     private final List<ExecutorService> executors = new ArrayList<ExecutorService>();
+
+    @BeforeEach
+    void createIsolatedWebRoot() throws IOException {
+        testWebRoot = temporaryDirectory.resolve("www");
+        Files.createDirectories(testWebRoot);
+    }
 
     @AfterEach
     void closeOwnedResources() throws InterruptedException {
@@ -92,6 +105,67 @@ class MiniServerStartupTest {
                 result.getPort(),
                 new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
         assertFalse(canAcquire(runtimeDirectory.resolve(MiniServerStartup.INSTANCE_LOCK_FILE)));
+    }
+
+    @Test
+    void newInstanceRegistersStaticHandlerBeforeServingRequests() throws Exception {
+        Path indexFile = testWebRoot.resolve("example/index.html");
+        Files.createDirectories(indexFile.getParent());
+        Files.write(indexFile, "startup integration".getBytes(StandardCharsets.UTF_8));
+        StartupResult result = own(
+                startup(
+                        temporaryDirectory.resolve("static-integration"),
+                        NORMAL_SETTINGS,
+                        new RecordingServerFactory()).start());
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(
+                "http://127.0.0.1:" + result.getPort() + "/example/").openConnection();
+        connection.setConnectTimeout(1000);
+        connection.setReadTimeout(1000);
+        try {
+            assertEquals(200, connection.getResponseCode());
+            assertEquals("startup integration", readText(connection.getInputStream()));
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    @Test
+    void unavailableWebRootFailsNewStartupAndReleasesCoordinationResources() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("missing-web-root");
+        Path missingWebRoot = temporaryDirectory.resolve("does-not-exist");
+        RecordingServerFactory serverFactory = new RecordingServerFactory();
+
+        assertThrows(
+                StartupException.class,
+                () -> new MiniServerStartup(
+                        runtimeDirectory,
+                        missingWebRoot,
+                        NORMAL_SETTINGS,
+                        serverFactory,
+                        NO_OBSERVER).start());
+
+        assertEquals(0, serverFactory.getCreationCount());
+        assertFalse(Files.exists(runtimeDirectory.resolve(MiniServerStartup.INSTANCE_STATE_FILE)));
+        assertTrue(canAcquire(runtimeDirectory.resolve(MiniServerStartup.INSTANCE_LOCK_FILE)));
+    }
+
+    @Test
+    void repeatedStartDoesNotResolveOrRequireAnotherWebRoot() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("repeated-with-missing-web-root");
+        RecordingServerFactory serverFactory = new RecordingServerFactory();
+        StartupResult first = own(startup(runtimeDirectory, NORMAL_SETTINGS, serverFactory).start());
+
+        StartupResult repeated = own(new MiniServerStartup(
+                runtimeDirectory,
+                temporaryDirectory.resolve("missing-repeated-web-root"),
+                NORMAL_SETTINGS,
+                serverFactory,
+                NO_OBSERVER).start());
+
+        assertTrue(repeated.isExistingInstance());
+        assertEquals(first.getPort(), repeated.getPort());
+        assertEquals(1, serverFactory.getCreationCount());
     }
 
     @Test
@@ -142,7 +216,11 @@ class MiniServerStartupTest {
         ExecutorService executor = own(Executors.newSingleThreadExecutor());
         Future<StartupResult> repeatedFuture = executor.submit(
                 () -> new MiniServerStartup(
-                        runtimeDirectory, NORMAL_SETTINGS, serverFactory, observer).start());
+                        runtimeDirectory,
+                        testWebRoot,
+                        NORMAL_SETTINGS,
+                        serverFactory,
+                        observer).start());
         assertTrue(candidateStateRead.await(2L, TimeUnit.SECONDS));
         assertEquals(
                 first.getPort(),
@@ -232,12 +310,20 @@ class MiniServerStartupTest {
         ExecutorService executor = own(Executors.newFixedThreadPool(2));
         Future<StartupResult> firstFuture = executor.submit(
                 () -> new MiniServerStartup(
-                        runtimeDirectory, NORMAL_SETTINGS, serverFactory, firstObserver).start());
+                        runtimeDirectory,
+                        testWebRoot,
+                        NORMAL_SETTINGS,
+                        serverFactory,
+                        firstObserver).start());
         assertTrue(firstHasStartupLock.await(2L, TimeUnit.SECONDS));
 
         Future<StartupResult> secondFuture = executor.submit(
                 () -> new MiniServerStartup(
-                        runtimeDirectory, NORMAL_SETTINGS, serverFactory, secondObserver).start());
+                        runtimeDirectory,
+                        testWebRoot,
+                        NORMAL_SETTINGS,
+                        serverFactory,
+                        secondObserver).start());
         assertTrue(secondObservedContention.await(2L, TimeUnit.SECONDS));
         releaseFirstStartup.countDown();
 
@@ -354,7 +440,12 @@ class MiniServerStartupTest {
             Path runtimeDirectory,
             MiniServerStartup.Settings settings,
             MiniServerStartup.ServerFactory serverFactory) {
-        return new MiniServerStartup(runtimeDirectory, settings, serverFactory, NO_OBSERVER);
+        return new MiniServerStartup(
+                runtimeDirectory,
+                testWebRoot,
+                settings,
+                serverFactory,
+                NO_OBSERVER);
     }
 
     private StartupResult own(StartupResult result) {
@@ -390,6 +481,18 @@ class MiniServerStartupTest {
     private static void assertListenerReachable(int port) throws IOException {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("127.0.0.1", port), 500);
+        }
+    }
+
+    private static String readText(InputStream input) throws IOException {
+        try (InputStream closeableInput = input;
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[256];
+            int read;
+            while ((read = closeableInput.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 

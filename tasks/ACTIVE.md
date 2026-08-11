@@ -349,7 +349,7 @@ Acceptance:
 
 ## T-003 — Implement Static File Serving
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
