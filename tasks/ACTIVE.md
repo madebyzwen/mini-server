@@ -386,7 +386,7 @@ Acceptance:
 
 ## T-004 — Implement Site Detection and Persistence Scoping
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
@@ -422,7 +422,7 @@ Acceptance:
 - Requests are mapped to the private or shared persistence file belonging to the addressed site namespace.
 - No default or unscoped persistence mapping exists.
 - Clients cannot override the derived persistence location with an arbitrary filesystem path or storage location.
-- Normal MiniApi usage is automatically scoped to the current application's API namespace.
+- The server-side mapping accepts the canonical application API namespace `/<site>/api/<scope>/...` that MiniApi will target automatically when T-007 is implemented.
 - Invalid or unsafe filesystem paths are rejected.
 - The implementation does not claim authentication or authorization isolation between hosted applications.
 

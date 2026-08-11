@@ -5,13 +5,9 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -110,13 +106,13 @@ final class StaticFileHandler implements HttpHandler {
     }
 
     private Path resolveResource(String rawPath) throws IOException {
-        String decodedPath = decodePath(rawPath);
+        String decodedPath = UrlPathDecoder.decode(rawPath);
         if (decodedPath == null
                 || !decodedPath.startsWith("/")
                 || decodedPath.startsWith("//")
                 || decodedPath.indexOf('\\') >= 0
                 || decodedPath.indexOf(':') >= 0
-                || containsControlCharacter(decodedPath)) {
+                || UrlPathDecoder.containsControlCharacter(decodedPath)) {
             return null;
         }
 
@@ -213,70 +209,6 @@ final class StaticFileHandler implements HttpHandler {
             segments.add(segment.toString());
         }
         return segments;
-    }
-
-    private static String decodePath(String rawPath) {
-        if (rawPath == null) {
-            return null;
-        }
-
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream(rawPath.length());
-        int index = 0;
-        while (index < rawPath.length()) {
-            char character = rawPath.charAt(index);
-            if (character == '%') {
-                if (index + 2 >= rawPath.length()) {
-                    return null;
-                }
-                int high = hexValue(rawPath.charAt(index + 1));
-                int low = hexValue(rawPath.charAt(index + 2));
-                if (high < 0 || low < 0) {
-                    return null;
-                }
-                bytes.write((high << 4) | low);
-                index += 3;
-                continue;
-            }
-
-            int nextPercent = rawPath.indexOf('%', index);
-            int end = nextPercent < 0 ? rawPath.length() : nextPercent;
-            byte[] unescaped = rawPath.substring(index, end).getBytes(StandardCharsets.UTF_8);
-            bytes.write(unescaped, 0, unescaped.length);
-            index = end;
-        }
-
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes.toByteArray()))
-                    .toString();
-        } catch (CharacterCodingException exception) {
-            return null;
-        }
-    }
-
-    private static int hexValue(char character) {
-        if (character >= '0' && character <= '9') {
-            return character - '0';
-        }
-        if (character >= 'a' && character <= 'f') {
-            return character - 'a' + 10;
-        }
-        if (character >= 'A' && character <= 'F') {
-            return character - 'A' + 10;
-        }
-        return -1;
-    }
-
-    private static boolean containsControlCharacter(String value) {
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if (character < 0x20 || character == 0x7f) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static String contentType(Path resource) {
