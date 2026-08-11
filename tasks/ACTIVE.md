@@ -202,7 +202,9 @@ Acceptance:
 
 ## T-002 — Implement Dynamic Local Server Startup
 
-Status: Done
+Status: Planned
+
+Rollback note: The previous implementation was deliberately rolled back because the deployment architecture changed. T-002 will be redefined after the affected requirements and architectural decisions have been corrected.
 
 Related requirements:
 
