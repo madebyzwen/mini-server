@@ -211,14 +211,29 @@ class PersistenceTargetResolverTest {
         Files.write(
                 outsideSite.resolve("recognizable.txt"),
                 "outside".getBytes(StandardCharsets.UTF_8));
-        Path siteLink = webRoot.resolve("linked-site");
-        try {
-            Files.createSymbolicLink(siteLink, outsideSite);
-        } catch (UnsupportedOperationException | IOException | SecurityException exception) {
-            Assumptions.assumeTrue(false, "Symbolic links are unavailable in this test environment.");
-        }
+        createSiteAlias("linked-site", outsideSite);
 
         assertFalse(resolver().resolve("/linked-site/api/shared/read").isPresent());
+    }
+
+    @Test
+    void symbolicLinkToReservedSharedAreaIsNotAPersistenceSite() throws Exception {
+        Path reservedSharedArea = createSite("_shared");
+        createSiteAlias("alias", reservedSharedArea);
+        PersistenceTargetResolver resolver = resolver();
+
+        assertFalse(resolver.resolve("/alias/api/shared/read").isPresent());
+        assertFalse(resolver.resolve("/alias/api/private/read").isPresent());
+    }
+
+    @Test
+    void symbolicLinkToAnotherApplicationIsNotAPersistenceSite() throws Exception {
+        Path dashboard = createSite("dashboard");
+        createSiteAlias("alias", dashboard);
+        PersistenceTargetResolver resolver = resolver();
+
+        assertFalse(resolver.resolve("/alias/api/shared/read").isPresent());
+        assertFalse(resolver.resolve("/alias/api/private/read").isPresent());
     }
 
     @Test
@@ -291,6 +306,18 @@ class PersistenceTargetResolverTest {
         Path siteDirectory = webRoot.resolve(site);
         Files.createDirectories(siteDirectory);
         return siteDirectory;
+    }
+
+    private Path createSiteAlias(String alias, Path target) {
+        Path siteLink = webRoot.resolve(alias);
+        try {
+            return Files.createSymbolicLink(siteLink, target);
+        } catch (UnsupportedOperationException | IOException | SecurityException exception) {
+            Assumptions.assumeTrue(
+                    false,
+                    "Symbolic links are unavailable in this test environment.");
+            return siteLink;
+        }
     }
 
     private PersistenceTargetResolver resolver() throws IOException {

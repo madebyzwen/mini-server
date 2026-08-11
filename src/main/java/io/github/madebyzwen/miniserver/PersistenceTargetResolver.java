@@ -3,6 +3,7 @@ package io.github.madebyzwen.miniserver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -67,10 +68,14 @@ final class PersistenceTargetResolver {
         Path siteDirectory;
         try {
             Path candidate = webRoot.resolve(components[0]).normalize();
-            if (!candidate.startsWith(webRoot)) {
+            if (!webRoot.equals(candidate.getParent())
+                    || Files.isSymbolicLink(candidate)) {
                 return Optional.empty();
             }
             siteDirectory = candidate.toRealPath();
+            if (!candidate.equals(siteDirectory)) {
+                return Optional.empty();
+            }
         } catch (NoSuchFileException | InvalidPathException exception) {
             return Optional.empty();
         } catch (SecurityException exception) {
@@ -78,8 +83,14 @@ final class PersistenceTargetResolver {
         }
 
         BasicFileAttributes siteAttributes =
-                Files.readAttributes(siteDirectory, BasicFileAttributes.class);
-        if (!siteDirectory.startsWith(webRoot) || !siteAttributes.isDirectory()) {
+                Files.readAttributes(
+                        siteDirectory,
+                        BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+        if (!webRoot.equals(siteDirectory.getParent())
+                || RESERVED_SHARED_SITE.equalsIgnoreCase(
+                        siteDirectory.getFileName().toString())
+                || !siteAttributes.isDirectory()) {
             return Optional.empty();
         }
 
