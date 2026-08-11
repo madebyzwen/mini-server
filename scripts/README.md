@@ -80,8 +80,8 @@ Its responsibilities may include starting the Java application in the intended w
 
 The Mini Server Java implementation remains responsible for:
 
-- Per-installation single-instance handling
-- Runtime-state handling
+- Local per-user/computer single-instance handling
+- Runtime state below `%LOCALAPPDATA%\MiniServer\runtime\`
 - Loopback server startup
 - Dynamic port allocation
 - Repeated-start detection
@@ -149,11 +149,11 @@ Normal generated Maven output such as:
 
 is disposable build output.
 
-Runtime state such as:
+Legacy project-local runtime state such as:
 
     .runtime/
 
-is also not source content.
+is also not source content and remains ignored as a safeguard. The target application runtime state is stored outside the installation below `%LOCALAPPDATA%\MiniServer\runtime\`.
 
 Scripts must not intentionally commit generated build output or local runtime state.
 

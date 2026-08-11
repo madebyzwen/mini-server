@@ -18,12 +18,13 @@ The initial version should establish the core foundation:
 - Static file serving from the `www` root
 - Support for multiple independent web applications
 - Central JSON persistence API
-- Per-application JSON data storage
+- Explicit shared and private per-application JSON data storage
 - Shared `mini-api.js` client library
 - Example application
 - Reusable template package distributed as `miniweb-template.zip`
 - Automatic allocation of an available local port
 - Automatic browser launch
+- Shared/network installation support with local per-user/computer runtime coordination
 
 The detailed scope of the first release is defined by the active requirements, not by this roadmap.
 

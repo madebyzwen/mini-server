@@ -45,6 +45,7 @@ Priority areas include:
 - Path traversal prevention
 - Site detection
 - Namespace and persistence scoping
+- Explicit shared/private scope selection
 - Persistence data protection from static serving
 - JSON persistence
 - Reading one section
@@ -63,8 +64,11 @@ Priority areas include:
 - HTTP method handling
 - HTTP error responses
 - File permission failures where practical
+- Bounded persistence write-lock failures
+- Atomic write visibility
 - Dynamic port allocation
-- Per-installation single-instance behavior
+- Local per-user/computer single-instance behavior
+- Concurrent use of one shared installation from different computer contexts
 - Runtime state handling
 - Startup race behavior where practical
 - Server startup failures
@@ -116,7 +120,7 @@ A successful test suite must not depend on exposing files outside the configured
 
 ## Persistence Tests
 
-Persistence tests should verify the data model defined by D-017 and REQ-003.
+Persistence tests should verify the data model defined by D-021 through D-023 and REQ-003.
 
 Tests should confirm that:
 
@@ -134,6 +138,12 @@ Tests should confirm that:
 - A non-object persistence root is rejected
 - Successful modifications leave valid JSON
 - Failed modifications are not reported as successful
+- Shared and private paths are derived correctly
+- Every operation requires an explicit scope
+- Modifying operations obtain a bounded exclusive target-file lock
+- Write-lock timeout returns `Write failed`
+- Atomic writes prevent readers from observing partial JSON
+- Reads do not acquire a separate read lock
 
 ## API Tests
 
@@ -141,15 +151,18 @@ API tests should verify both successful and failed behavior.
 
 Tests should cover the HTTP contract:
 
-    GET    /<site>/api/read?section=<name>
-    GET    /<site>/api/readAll
-    POST   /<site>/api/write
-    DELETE /<site>/api/remove?section=<name>
-    DELETE /<site>/api/clear
+    GET    /<site>/api/<scope>/read?section=<name>
+    GET    /<site>/api/<scope>/readAll
+    POST   /<site>/api/<scope>/write
+    DELETE /<site>/api/<scope>/remove?section=<name>
+    DELETE /<site>/api/<scope>/clear
 
 Tests should confirm that:
 
 - Valid requests succeed
+- private and shared scope map to their approved locations
+- Missing, unknown, and unscoped requests fail
+- The alternative `/<site>/<scope>/api/<operation>` layout fails
 - Invalid requests fail
 - Correct HTTP methods are required
 - Unsupported methods return the defined error response
@@ -181,14 +194,15 @@ The actual assigned port must be obtained from the running server instance.
 
 ## Single-Instance Tests
 
-Where practical, automated tests should verify the per-installation single-instance behavior defined by D-018 and REQ-006.
+Where practical, automated tests should verify the local per-user/computer single-instance behavior defined by D-020 and REQ-006.
 
 Tests should cover:
 
-- Acquiring an instance lock for a new installation
+- Coordinating concurrent startup attempts through local startup.lock
+- Acquiring instance.lock for a new local context
 - Detecting an already owned instance lock
-- Preventing a second server instance for the same installation
-- Allowing independent installations to operate separately
+- Preventing a second server instance in the same local user/computer context
+- Allowing separate computer contexts to use the same shared installation
 - Publishing the active runtime port
 - Ignoring stale runtime state when no active lock exists
 - Preventing stale runtime state from being treated as proof of a running server
@@ -199,11 +213,13 @@ Tests must not depend on a permanently configured port.
 
 ## Runtime State Tests
 
-Runtime-state tests should use temporary installation directories.
+Runtime-state tests should use isolated temporary local-runtime directories that represent:
 
-They must not modify the developer's normal project `.runtime/` directory.
+    %LOCALAPPDATA%\MiniServer\runtime\
 
-Tests should verify that runtime state remains outside the web root and is not exposed by static file serving.
+They must not modify the developer's real local runtime directory or create runtime coordination state in a shared test installation.
+
+Tests should verify that runtime state remains outside the installation/web root, is user/context scoped, and is not exposed by static serving.
 
 ## Java Compatibility
 

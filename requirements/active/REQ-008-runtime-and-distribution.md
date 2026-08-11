@@ -26,6 +26,8 @@ It must run on systems that provide a compatible Java 8 runtime.
 
 The distribution should remain small and self-contained apart from the required Java runtime and the web application files stored below the Mini Server web root.
 
+The distribution may reside on a local disk, shared network drive, or group drive and may be used concurrently from different computers.
+
 The user should not need to install or configure:
 
 - A separate web server
@@ -188,13 +190,11 @@ The repository's development-only:
 
 directory does not need to be copied into the normal runtime distribution when `miniweb-template.zip` has been produced from it.
 
-The runtime:
+Machine- and process-specific runtime coordination state is not part of the distribution and must not be created below the installation root.
 
-    .runtime/
+Mini Server creates local per-user/computer runtime state below:
 
-directory does not need to exist in a fresh distribution.
-
-Mini Server creates and manages runtime state when required.
+    %LOCALAPPDATA%\MiniServer\runtime\
 
 ## Web Root
 
@@ -220,11 +220,15 @@ for shared browser-side functionality and first-level application directories su
 
 Additional valid application directories may be added without application-specific Java server code changes.
 
-Persistent data below:
+Shared persistent data below:
 
     www/<site>/data/
 
 must remain protected from normal static file serving as defined by the persistence requirements.
+
+Private persistence remains outside the installation below:
+
+    %APPDATA%\MiniServerData\<site>\data\
 
 ## Windows Startup
 
@@ -234,10 +238,10 @@ The distribution must provide a simple user-facing method to start Mini Server.
 
 Normal use should require one action, such as a desktop shortcut or launcher.
 
-The Java implementation is responsible for the startup behavior defined by D-018 and REQ-006, including:
+The Java implementation is responsible for the startup behavior defined by D-020 and REQ-006, including:
 
-- Per-installation single-instance handling
-- Runtime-state handling
+- Per-user/computer single-instance handling
+- Local runtime-state handling
 - Loopback-only server startup
 - Requesting TCP port `0`
 - Obtaining the operating-system-assigned port
@@ -255,7 +259,7 @@ Normal operation must not require administrator privileges.
 
 The server runs with the permissions of the current user.
 
-Files written through the JSON persistence API are therefore subject to the filesystem permissions of that user.
+Shared and private files written through the JSON persistence API are therefore subject to the filesystem permissions of that user at their respective locations.
 
 If required files or directories are not writable, Mini Server must report the failure rather than attempting to elevate privileges automatically.
 
@@ -263,11 +267,11 @@ If required files or directories are not writable, Mini Server must report the f
 
 A traditional system-wide installation is not required for Mini Server v1.0.
 
-The application must be suitable for deployment by copying the distribution directory to an appropriate user-accessible location.
+The application must be suitable for deployment by copying the distribution directory to a user-accessible local or shared/network location.
 
-The copied directory represents one Mini Server installation for the purposes of the per-installation single-instance mechanism.
+Multiple users on different computers may use one copied distribution concurrently. Each computer/user context runs its own loopback server and uses its own local runtime coordination state.
 
-Independent copied Mini Server installations may operate separately.
+Independent copied Mini Server installations may also operate separately.
 
 Mini Server must not require changes to system-wide web server configuration.
 
@@ -301,7 +305,7 @@ The server remains independent from Edge.
 
 Closing Edge does not intentionally terminate the Mini Server Java process.
 
-A repeated start may reopen the already running Mini Server instance in Edge using its published runtime port.
+A repeated start within the same local user/computer context may reopen the already running local Mini Server instance in Edge using its published local runtime port.
 
 ## Network Requirements
 
@@ -332,11 +336,19 @@ Such application-specific network requirements are outside the Mini Server runti
 
 ## Application Data
 
-Application persistence remains inside the corresponding hosted application's data directory.
+Every persistence operation explicitly selects shared or private scope.
 
-For example:
+Shared application persistence is stored at:
 
-    www/example/data/data.json
+    <installation-root>\www\<site>\data\data.json
+
+Private application persistence is stored at:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
+Both use the same section-based JSON structure and API semantics. There is no default persistence scope.
+
+Private means user-profile storage rather than a security boundary.
 
 The distribution model must not require:
 
@@ -352,22 +364,25 @@ Persistence data must not be exposed through Mini Server's normal static HTTP fi
 
 ## Runtime State
 
-Per-installation runtime state is stored outside the web root at:
+Per-user/computer runtime coordination state is stored locally at:
 
-    .runtime/
+    %LOCALAPPDATA%\MiniServer\runtime\
 
-The runtime state may include:
+The runtime state uses:
 
-    .runtime/instance.lock
-    .runtime/instance.json
+    startup.lock
+    instance.lock
+    instance.json
 
-Runtime state is local process state and is not distribution source content.
+Runtime state is local process state and is not distribution or installation content.
 
-The `.runtime/` directory may be created automatically when Mini Server starts.
+The local runtime directory may be created automatically when Mini Server starts.
 
 Runtime state must not be packaged as authoritative state from a development or build environment.
 
 A stale runtime-state file alone must never be interpreted as proof of a running Mini Server instance.
+
+No runtime lock or port state may be shared through the installation directory.
 
 ## Portability of Web Applications
 
@@ -383,7 +398,7 @@ Shared Mini Server functionality remains provided by:
 - The shared browser-side `mini-api.js` library
 - The standard persistence API contract
 
-Application persistence may travel with the application's directory when that is intentionally desired.
+Shared persistence may travel with the application's directory when that is intentionally desired. Private persistence remains in the current user's profile.
 
 The reusable starter template provides a clean basis for creating additional portable applications.
 
@@ -432,15 +447,19 @@ REQ-008 is fulfilled when all of the following are true:
 - The normal distribution does not require a permanent `www/template/` application.
 - The reusable template package is produced from the maintained top-level `template/` source.
 - The top-level `template/` source is not treated as a hosted runtime application.
-- The runtime `.runtime/` directory may be created on demand and does not need to exist in a fresh distribution.
+- The distribution contains no authoritative runtime lock or port state.
+- Local runtime state is created under `%LOCALAPPDATA%\MiniServer\runtime\`.
 - Normal startup can be performed through a simple Windows user action.
 - The user does not need to configure a fixed TCP port.
 - The startup mechanism does not perform manual port scanning.
 - Microsoft Edge can be opened with the actual active local server URL.
-- A repeated start reuses the existing server instance for the same installation.
+- A shared/network installation can be used concurrently from different computers.
+- A repeated start reuses or detects the existing server instance in the same local user/computer context.
 - Closing Edge does not intentionally stop Mini Server.
 - Mini Server can operate locally without internet access.
-- Application persistence remains file-based.
+- Application persistence remains file-based with mandatory shared or private scope.
+- Shared persistence uses `<installation-root>\www\<site>\data\data.json`.
+- Private persistence uses `%APPDATA%\MiniServerData\<site>\data\data.json`.
 - Persistent application data is not exposed through normal static file serving.
 - New valid application directories can be added below `www/` without application-specific Java server changes.
 - Independent copied Mini Server installations may operate separately.
@@ -461,7 +480,7 @@ External dependencies must have a clear technical purpose.
 
 Public internet deployment is outside the supported runtime and distribution model.
 
-The normal runtime package must preserve the loopback-only, dynamic-port, per-installation single-instance, and file-based persistence architecture.
+The normal runtime package must preserve the loopback-only, dynamic-port, local per-user/computer single-instance, and explicitly scoped file-based persistence architecture.
 
 ## Related Decisions
 
@@ -474,8 +493,11 @@ The normal runtime package must preserve the loopback-only, dynamic-port, per-in
 - D-013 — English Repository Language
 - D-014 — Not Intended for Public Internet Use
 - D-015 — Persistence Data Is Not Served as Static Content
-- D-018 — Single Running Instance and Server Lifetime
 - D-019 — Maven Build and Project Source Structure
+- D-020 — Local Per-User/Computer Runtime Instance
+- D-021 — Explicit Shared and Private Persistence Scopes
+- D-022 — Explicitly Scoped Persistence API Contract
+- D-023 — Concurrency-Safe Persistence Writes
 
 ## Related Requirements
 
@@ -495,9 +517,9 @@ See:
 
 Relevant sections include:
 
-- Runtime Structure
+- Storage and Runtime Boundaries
 - Web Application Model
-- Example Application and Template Package
+- Example Application and Template
 - Network Boundary
 - Startup and Browser Launch
 - Architectural Principles

@@ -14,366 +14,239 @@ Active
 
 ## Purpose
 
-Mini Server must provide a simple startup experience for the local user.
+Mini Server must start a local loopback server, obtain its operating-system-assigned port, and open Microsoft Edge with the correct URL.
 
-A normal start must launch the local server, determine its operating-system-assigned TCP port, and open Microsoft Edge with the correct local Mini Server URL.
+Repeated starts within the same local user/computer context must reuse or detect the active local instance. Users on different computers must be able to run the same shared installation concurrently.
 
-Repeated starts of the same installation must reuse an already running server instance instead of creating additional competing server processes.
+## Shared Installation and Local Server
 
-## Description
+A Mini Server installation may reside on a local disk, network drive, or group drive.
 
-Mini Server is intended to be started through a simple user action such as a desktop shortcut or equivalent launcher.
+Examples of supported concurrent use include:
 
-The user must not need to:
+- User A on Computer A and User B on Computer B running the same physical installation
+- One person running the shared installation on a laptop and in a separate VDI environment
+- Different Windows users running the same shared installation in their own user/computer contexts
 
-- Select a TCP port
-- Check whether Mini Server is already running
-- Start Microsoft Edge manually
-- Enter the local server address manually
-- Stop an existing Mini Server instance before opening it again
+The installation is shareable. Each HTTP server and its runtime coordination state remain local.
 
-Mini Server manages these details automatically.
+No machine- or process-specific runtime lock or port state may be stored in or coordinated through the installation directory.
 
 ## Network Binding
 
-A newly started Mini Server instance must bind only to:
+Every newly started server binds exclusively to:
 
     127.0.0.1
 
-The server must request TCP port:
+and requests:
 
-    0
+    TCP port 0
 
-The operating system selects an available local TCP port.
+The operating system selects an available local port. Mini Server obtains the actual port from the active server socket after successful startup.
 
-Mini Server must not:
+Mini Server must not use a fixed port, scan a port range, or bind the normal server listener to an external interface.
 
-- Use a permanently configured server port
-- Scan a range of ports looking for a free port
-- Bind the normal server listener to external network interfaces
+## Single Local Instance
 
-After successful startup, Mini Server must obtain the actual port assigned by the operating system.
+Only one Mini Server server process may run within one local user/computer context.
 
-## Single Instance per Installation
+This scope is not the installation. Different computers do not block each other merely because they use the same shared distribution.
 
-Only one Mini Server server process may run for one installation at a time.
+A repeated start in the same local context must reuse or detect the already running local server rather than start another.
 
-The single-instance scope is the Mini Server installation, not the entire computer.
+## Local Runtime State
 
-Therefore two independent Mini Server installations may run simultaneously, each with:
+Runtime coordination state is stored at:
 
-- Its own installation directory
-- Its own runtime state
-- Its own operating-system-assigned TCP port
-- Its own hosted applications and persistence data
+    %LOCALAPPDATA%\MiniServer\runtime\
 
-Two processes belonging to the same installation must not operate as independent server instances at the same time.
+The required concepts are:
 
-## Runtime State
+    startup.lock
+    instance.lock
+    instance.json
 
-Mini Server must maintain local runtime information outside the web root.
+Responsibilities:
 
-The intended location is:
+- startup.lock coordinates concurrent startup attempts within the local user/computer context.
+- instance.lock is held by the active server process for its lifetime and is authoritative for whether the local instance is active.
+- instance.json stores repeated-start information, including the assigned local TCP port.
 
-    <installation-root>/.runtime/
+Runtime files must not be stored below www, served as static content, or shared through the installation.
 
-Runtime information includes an exclusive instance lock and the state required to reopen an already running Mini Server instance.
+A state file alone is never proof that an instance is active.
 
-For example:
+## First Local Start
 
-    <installation-root>/.runtime/instance.lock
-    <installation-root>/.runtime/instance.json
+When no active local instance exists:
 
-The runtime state must contain at least the currently assigned server port once startup has completed successfully.
+1. Obtain startup.lock using a bounded wait.
+2. Determine that no active process owns instance.lock.
+3. Invalidate stale instance.json state.
+4. Obtain instance.lock and retain it for the server lifetime.
+5. Start the HTTP server on 127.0.0.1 using port 0.
+6. Obtain the actual operating-system-assigned port.
+7. Confirm that the server is ready to accept requests.
+8. Publish the assigned port in instance.json.
+9. Release startup.lock after local startup state is stable.
+10. Construct the browser URL from 127.0.0.1, the assigned port, and configured start target.
+11. Open Microsoft Edge with that URL.
+12. Continue running while retaining instance.lock.
 
-Runtime files must not be stored below:
-
-    www/
-
-and must not be available through normal static HTTP requests.
-
-The exact internal serialization of runtime state may remain an implementation detail.
-
-## Instance Lock
-
-Mini Server must use an exclusive process-owned lock to determine whether the current installation already has a running server instance.
-
-The active lock is authoritative.
-
-The existence of a runtime state file by itself must not be treated as proof that a Mini Server process is still running.
-
-If the lock can be acquired, no other running Mini Server process currently owns that installation.
-
-If the lock cannot be acquired because another process owns it, the current process must behave as a repeated start.
-
-## First Start
-
-When no Mini Server instance is already running for the installation, startup must proceed in this order:
-
-1. Acquire the exclusive installation instance lock.
-2. Invalidate stale runtime state from a previous execution.
-3. Start the HTTP server bound to `127.0.0.1`.
-4. Request TCP port `0`.
-5. Obtain the actual port assigned by the operating system.
-6. Publish the assigned port in the current runtime state.
-7. Treat the server as ready.
-8. Construct the browser URL using `127.0.0.1`, the assigned port, and the configured Mini Server start target.
-9. Open Microsoft Edge with that URL.
-10. Continue running as the active Mini Server process.
-
-For example, if the operating system assigns port:
-
-    51847
-
-and the configured start target is:
-
-    /example/
-
-the resulting URL is:
-
-    http://127.0.0.1:51847/example/
-
-Microsoft Edge must not be opened with a guessed or predetermined port.
-
-The browser should be launched only after the server is ready to accept requests.
+If startup fails after instance.lock was acquired, the process must cleanly release its resources and must not publish a usable state or open Edge with a known-invalid URL.
 
 ## Configured Start Target
 
-Mini Server must support a defined application path that is opened after startup.
-
-The startup URL consists of:
+The startup URL is:
 
     http://127.0.0.1:<assigned-port><start-target>
 
-The exact configuration mechanism for selecting the start target may be defined by the distribution and build structure.
+For a start target of /example/ and an assigned port of 51847:
 
-The configured target must resolve to content served by the current Mini Server installation.
+    http://127.0.0.1:51847/example/
 
-The start target must not alter the server's loopback-only network binding or dynamic-port behavior.
+The exact configuration representation may be selected during implementation. It must identify content served by the current installation and must not alter the loopback or dynamic-port rules.
 
-## Repeated Start
+## Repeated Local Start
 
-If the same Mini Server installation is started again while its server process is already running, the second process must not start another HTTP server.
+A repeated startup attempt first obtains startup.lock using a bounded wait.
 
-Instead, the repeated start must:
+If another local process owns instance.lock, the repeated start:
 
-1. Detect that another process owns the installation instance lock.
-2. Obtain the runtime state published by the active instance.
-3. Read the currently assigned server port.
-4. Construct the browser URL using the existing server instance.
-5. Open Microsoft Edge with that URL.
-6. Exit without becoming another server process.
+1. Does not start another HTTP server.
+2. Obtains valid instance.json state for the active local process.
+3. Reads the active local port.
+4. Constructs the URL using that port and the configured start target.
+5. Releases startup.lock.
+6. Opens Microsoft Edge with the existing local URL.
+7. Exits without becoming a server process.
 
-For example, if the existing instance is listening on:
+The repeated start must not use a port published by a different computer or an installation-level state file.
 
-    127.0.0.1:51847
+## Startup Race and Timeouts
 
-the repeated start must reuse:
+Concurrent local startup attempts and repeated-start state discovery must be bounded and deterministic.
 
-    http://127.0.0.1:51847/<start-target>
+A process may encounter an active instance.lock before valid instance.json state is available. It may wait and retry for a short bounded period while coordinating through startup.lock.
 
-It must not request another operating-system-assigned port for a second server instance.
+If a required runtime lock or valid state cannot be obtained within its bounded timeout, startup fails with a clear diagnostic. It must not hang indefinitely or start a competing local server.
 
-## Startup Race
-
-A repeated start may occur while the first process:
-
-- Already owns the instance lock
-- Is still starting the HTTP server
-- Has not yet published valid runtime state
-
-The repeated start must not treat missing or incomplete runtime state during this phase as permission to create another server instance.
-
-It may wait and retry for valid runtime state for a short bounded period.
-
-If the active lock remains owned but valid runtime state cannot be obtained within that bounded period, the repeated start must fail with a clear diagnostic message.
-
-It must not start a competing Mini Server process.
-
-The exact retry timing may be chosen during implementation as long as the wait remains bounded and the single-instance guarantee is preserved.
+Exact timeout durations may be selected during implementation.
 
 ## Stale Runtime State
 
-Runtime state may remain after abnormal process termination.
+Stale instance.json or lock files may remain after abnormal termination.
 
-A stale state file must not permanently block Mini Server startup.
+If no active process owns instance.lock, stale files must not block startup. A new process invalidates old state before publishing its own assigned port.
 
-When no process owns the instance lock:
-
-- A new instance may acquire the lock
-- Old runtime state must be invalidated
-- A new dynamic port must be requested
-- Fresh runtime state must be published only after successful server startup
-
-A stale port value must never be reused merely because it remains in a state file.
+An old port is never reused solely because it remains in instance.json.
 
 ## Browser Launch
 
-Mini Server v1.0 targets Microsoft Edge on Windows for the normal distribution startup experience.
+Mini Server v1 targets the normally installed Microsoft Edge browser on Windows.
 
-The browser launch must use the normal installed Microsoft Edge application.
+Edge is opened only after a new local server is ready or a repeated start has obtained valid active-local-instance state.
 
-Mini Server does not require a dedicated embedded browser.
+Mini Server does not control whether Windows/Edge opens a tab, window, existing process, or new process.
 
-Opening Mini Server must not prevent the user from using the same Edge instance for unrelated normal browser tabs or windows.
-
-Repeated starts may open the Mini Server start URL again in Edge.
-
-The exact Edge process behavior, such as whether the operating system reuses an existing Edge process or creates another one, does not need to be controlled by Mini Server.
+If Edge launch fails after the server has started, the server may continue running. The valid local URL must be made available with a concise diagnostic so the user can open it manually.
 
 ## Server Lifetime
 
-The lifetime of Mini Server is independent of individual Edge windows and tabs.
+The Mini Server Java process is independent of Edge.
 
-Closing:
+Closing a tab, one Edge window, or all Edge windows must not intentionally stop the server.
 
-- The Mini Server browser tab
-- An Edge window
-- All visible Edge windows
+The server continues until its Java process ends because of logoff, shutdown, explicit termination, fatal failure, or another normal process-ending event.
 
-must not intentionally stop the Mini Server Java process.
+Mini Server v1 has no browser-accessible HTTP shutdown endpoint.
 
-The server continues running until its Java process ends.
+## Process Termination
 
-Examples include:
+The active process owns instance.lock. The operating system releases the process-owned lock when that process terminates, including unexpected termination.
 
-- User logoff
-- Operating-system shutdown
-- Explicit process termination
-- Fatal Mini Server process failure
+Stale runtime files may remain, but without an actively owned instance.lock they do not establish a running instance.
 
-## No HTTP Shutdown Endpoint
+## Persistence Concurrency Boundary
 
-Mini Server v1.0 must not expose a normal browser-accessible HTTP operation for shutting down the server.
+Local runtime single-instance locking does not protect shared persistence from server processes on other computers.
 
-In particular, hosted applications must not receive a persistence-style API endpoint capable of terminating the Mini Server process.
+Concurrency safety for shared and private data is provided by short-lived persistence-file locks and atomic writes as defined by D-023 and REQ-003.
 
-Closing the browser is not a server shutdown command.
-
-A future controlled shutdown mechanism may be considered separately if a later requirement introduces one.
-
-## Process Termination and Lock Release
-
-The exclusive instance lock must be owned by the running Mini Server process.
-
-When that process terminates, the operating system must release the process-owned lock.
-
-This allows a later Mini Server process to start normally.
-
-Unexpected termination may leave stale state files behind, but stale state without an actively owned lock must not block subsequent startup.
-
-## Persistence Safety
-
-The single-instance mechanism also protects persistence data from competing independent Mini Server processes belonging to the same installation.
-
-Under normal operation, two server processes must not simultaneously modify:
-
-    www/<site>/data/data.json
-
-for the same installation.
-
-Concurrency that occurs inside one running Mini Server process remains subject to the persistence integrity and synchronization requirements defined elsewhere.
+Runtime locks and persistence locks are separate mechanisms and must not be conflated.
 
 ## Startup Errors
 
-If Mini Server cannot complete startup, it must not open Edge with a URL that is known to be unusable.
+Startup fails clearly when required operations fail, including:
 
-Startup must fail with a clear diagnostic message when required operations fail, including failures such as:
-
-- The instance lock cannot be handled correctly
+- Local startup or instance locks cannot be obtained within their bounded timeouts
+- Valid repeated-start state cannot be obtained
 - The HTTP server cannot bind to loopback
-- The operating system does not provide a usable port
-- Required installation resources cannot be accessed
-- Valid runtime state cannot be obtained during a repeated-start race
+- The operating system does not provide a usable assigned port
+- Required installation resources cannot be read
+- Local runtime state cannot be handled
 - Microsoft Edge cannot be launched
 
-A browser launch failure does not change the server's network binding or dynamic port.
-
-The exact user-facing diagnostic presentation may be defined by the error-handling requirement and implementation.
+A failed operation must not be reported as successful startup. Edge must not be opened with a URL known to be invalid.
 
 ## Acceptance Criteria
 
-REQ-006 is fulfilled when all of the following are true:
+REQ-006 is fulfilled when:
 
-- Mini Server binds only to `127.0.0.1`.
-- A newly started server requests TCP port `0`.
-- No fixed TCP port is required.
-- Mini Server does not scan for free ports.
-- The actual operating-system-assigned port is obtained after server startup.
-- Runtime lock and state data are stored outside `www/`.
-- Runtime state is not served as static web content.
-- Only one server process may run per Mini Server installation.
-- Independent Mini Server installations can run simultaneously.
-- The first process acquires the installation instance lock before starting the server.
-- Stale runtime state is invalidated before a new instance publishes its current port.
-- The assigned port is published only after successful server startup.
-- Edge is opened using the actual assigned port.
-- The configured application start target is included in the browser URL.
-- A repeated start does not create a second server instance.
-- A repeated start reuses the currently running instance's port.
-- A repeated start opens Edge with the existing server URL.
-- A repeated-start race does not result in a competing server process.
-- A stale runtime state file alone does not prevent a new startup.
-- The active instance lock is authoritative for determining whether the installation is already running.
+- Shared/network-drive installations are supported.
+- Different computers can run the same physical installation concurrently.
+- No runtime lock or port state is coordinated through the installation directory.
+- Each server binds exclusively to 127.0.0.1 and requests port 0.
+- No fixed port, port scanning, or external listener is used.
+- The actual assigned port is read from the active server.
+- Runtime state is stored under %LOCALAPPDATA%\MiniServer\runtime\.
+- Runtime state includes startup.lock, instance.lock, and instance.json responsibilities.
+- startup.lock coordinates local concurrent startup attempts.
+- instance.lock is process-owned, lifetime-held, and authoritative.
+- instance.json publishes the active assigned port.
+- Only one server process runs per local user/computer context.
+- A repeated local start does not start another server.
+- A repeated local start obtains and reuses the active local port.
+- Lock and state waits are bounded and deterministic.
+- State alone is not treated as proof of an active process.
+- Stale state does not permanently block startup.
+- The assigned port is published only after readiness.
+- Edge opens with the active local port and configured target.
+- Browser-launch failure does not corrupt a successfully running server.
 - Closing Edge does not intentionally stop Mini Server.
-- Mini Server continues running independently of browser windows and tabs.
-- Mini Server v1.0 exposes no normal HTTP shutdown endpoint.
 - Process termination releases the process-owned instance lock.
-- Abnormal termination does not permanently block future startup.
-- Two independent Mini Server processes do not normally write to the same installation's persistence files concurrently.
-- Startup failures are not reported as successful startup.
-- Edge is not intentionally opened with a known invalid server URL.
+- Runtime locking is not claimed to protect cross-computer persistence writes.
+- Persistence concurrency is delegated to the file-locking model.
+- Startup failures are reported clearly and do not launch a known-invalid URL.
 
 ## Constraints
 
-The startup implementation must remain compatible with the project's approved Java runtime requirements.
+The startup implementation remains Java 8 compatible, lightweight, loopback-only, and usable without administrator privileges.
 
-Normal operation must not require administrator privileges.
-
-The dynamic-port behavior defined by the project architecture must be preserved.
-
-The single-instance mechanism must be scoped to the current Mini Server installation.
-
-Runtime state must remain outside the web root.
-
-The implementation must not introduce a public or externally reachable server listener.
-
-The implementation must follow D-018.
+It follows D-020. It must not recreate installation-scoped runtime state or introduce migration behavior for the discarded implementation.
 
 ## Related Decisions
 
 - D-001 — Java 8 Compatibility
+- D-002 — Local Loopback Binding
+- D-003 — Dynamic Port Allocation
+- D-004 — Browser Launch Uses the Assigned Port
 - D-014 — Not Intended for Public Internet Use
-- D-018 — Single Running Instance and Server Lifetime
+- D-020 — Local Per-User/Computer Runtime Instance
+- D-023 — Concurrency-Safe Persistence Writes
 
 ## Related Architecture
 
-See:
+See docs/ARCHITECTURE.md, especially:
 
-docs/ARCHITECTURE.md
-
-Relevant areas include:
-
+- Storage and Runtime Boundaries
 - Network Boundary
-- Runtime Structure
 - Startup and Browser Launch
-- Persistence Safety
+- Persistence Concurrency
 
 ## Related Tasks
 
-See:
-
-tasks/ACTIVE.md
-
-Relevant implementation tasks must cover:
-
-- Dynamic loopback startup
-- Operating-system-assigned port handling
-- Per-installation instance locking
-- Runtime state publication
-- Repeated-start behavior
-- Microsoft Edge launch
-- Startup diagnostics
+See tasks/ACTIVE.md, especially T-002, T-010, T-011, and T-013.
 
 ## Target Release
 

@@ -14,95 +14,72 @@ Active
 
 ## Purpose
 
-Mini Server must provide a central JSON-based persistence API that can be used by all hosted web applications.
+Mini Server must provide one generic JSON persistence API for all hosted web applications.
 
-The API must remain generic and must not interpret application-specific business data.
+Every persistence operation must explicitly select shared or private storage. The server must not interpret application-specific business data.
 
-## Description
+## Persistence Scopes
 
-Each first-level web application below `www/` has its own JSON persistence file.
+Each valid first-level application below www has two persistence scopes:
 
-The standard location is:
+    shared
+    private
 
-    www/<site>/data/data.json
+There is no implicit or default persistence scope.
 
-The API is implemented once in the Java server.
+Shared persistence is stored at:
 
-Individual applications must not require separate server-side API implementations.
+    <installation-root>\www\<site>\data\data.json
 
-The server exposes the same persistence operations within each valid application's URL namespace.
+Private persistence is stored at:
 
-## Site Scope
+    %APPDATA%\MiniServerData\<site>\data\data.json
 
-The site is determined from the request URL.
+Both scopes use the same JSON model and operations.
 
-For example:
+Private means user-profile storage rather than shared-installation storage. It does not provide authentication, authorization, encryption, or isolation between mutually hostile applications.
 
-    GET /example/api/read?section=settings
+## Site and Scope Mapping
 
-operates on:
-
-    www/example/data/data.json
-
-Likewise:
-
-    GET /dashboard/api/read?section=settings
-
-operates on:
-
-    www/dashboard/data/data.json
-
-The server must derive and validate the persistence location itself.
-
-The client must not provide an arbitrary filesystem path or persistence location.
-
-An API namespace is valid only when the corresponding first-level application directory exists below `www/`.
+The site and scope are determined from the request URL.
 
 For example:
 
-    /example/api/
+    GET /dashboard/api/shared/read?section=settings
 
-is a valid namespace when:
+operates on:
 
-    www/example/
+    <installation-root>\www\dashboard\data\data.json
 
-exists.
+while:
 
-An API request must not create a new application directory merely because an unknown site name was supplied in the URL.
+    GET /dashboard/api/private/read?section=settings
 
-Reserved Mini Server areas such as:
+operates on:
 
-    www/_shared/
+    %APPDATA%\MiniServerData\dashboard\data\data.json
 
-must not be treated as normal application persistence namespaces.
+The server derives and validates both physical locations. Clients must never provide arbitrary filesystem paths or persistence locations.
 
-## Persistence Access Boundary
+An API site is valid only when the corresponding first-level application directory exists below www. Unknown site names must not create application directories. Reserved areas such as www/_shared are not application persistence namespaces.
 
-The directory:
+## Static Access Boundary
 
-    www/<site>/data/
+The shared persistence directory:
 
-is reserved for Mini Server persistence.
+    <installation-root>\www\<site>\data\
 
-Persistent application data stored below this directory must not be served through the normal static file handler.
+must not be served by the normal static file handler.
 
-In particular:
+A request for:
 
-    /example/data/data.json
+    /<site>/data/data.json
 
-must not provide direct HTTP access to:
-
-    www/example/data/data.json
-
-Persistent data must be accessed through the site's JSON API.
-
-Normal static JSON resources stored elsewhere in an application's directory may still be served as static content when permitted by the static file serving requirements.
+must not expose shared persistence data. Private persistence is outside the web root and must likewise never be available through normal static serving.
 
 ## Persistence Data Model
 
-Each site's `data.json` file must contain a JSON object at its root.
-
-The top-level properties of this object are named sections.
+Each shared or private data.json file contains a JSON object at its root. Top-level properties are named Sections.
 
 Example:
 
@@ -121,320 +98,154 @@ The empty persistence state is:
 
     {}
 
-The root of `data.json` must not be:
+The root must not be an array, string, number, boolean, or null.
 
-- An array
-- A string
-- A number
-- A boolean
-- Null
-
-Each individual section value may contain any valid JSON-compatible value, including:
-
-- Objects
-- Arrays
-- Strings
-- Numbers
-- Booleans
-- Null
-
-The server must preserve valid JSON section values without interpreting their application-specific meaning.
+Each Section value may contain any JSON-compatible object, array, string, number, boolean, or null. The server preserves valid values without interpreting their application-specific meaning.
 
 ## Section Names
 
-Section names are logical JSON property names.
-
-They must never be interpreted as filesystem paths.
-
-A valid section name:
+A Section name:
 
 - Must contain between 1 and 128 characters
 - Must not be empty
-- Must not contain leading whitespace
-- Must not contain trailing whitespace
+- Must not contain leading or trailing whitespace
 - Must not contain control characters
 
-Unicode characters and normal characters such as spaces, hyphens, underscores, and periods may be used inside a section name.
+Unicode characters and normal spaces, hyphens, underscores, and periods may appear inside a Section name.
 
-Invalid section names must be rejected.
+Section names are logical JSON property names and must never be interpreted as filesystem paths.
 
-## API Operations
+## HTTP API
 
-The API must provide the following operations:
+The canonical route shape is:
 
-    GET    /<site>/api/read?section=<name>
-    GET    /<site>/api/readAll
-    POST   /<site>/api/write
-    DELETE /<site>/api/remove?section=<name>
-    DELETE /<site>/api/clear
+    /<site>/api/<scope>/<operation>
 
-The HTTP method is part of the API contract.
+where scope is private or shared.
 
-Calling a known operation with an unsupported method must return:
+The operations are:
 
-    405 Method Not Allowed
+    GET    /<site>/api/<scope>/read?section=<name>
+    GET    /<site>/api/<scope>/readAll
+    POST   /<site>/api/<scope>/write
+    DELETE /<site>/api/<scope>/remove?section=<name>
+    DELETE /<site>/api/<scope>/clear
+
+Every request must contain a valid explicit scope. Unscoped routes and /<site>/<scope>/api/<operation> are not part of the v1 API.
+
+The HTTP method is part of the contract. A known operation called with an unsupported method returns 405 Method Not Allowed.
 
 ## Read One Section
 
-The operation:
+    GET /<site>/api/<scope>/read?section=<name>
 
-    GET /<site>/api/read?section=<name>
+returns one Section's stored JSON value directly.
 
-reads one named section from the current site's persistence data.
+A stored JSON null value is valid and returns successfully as null.
 
-If the section exists, its stored JSON value must be returned directly.
-
-For example, if the persistence file contains:
-
-    {
-        "settings": {
-            "theme": "dark"
-        }
-    }
-
-then:
-
-    GET /example/api/read?section=settings
-
-returns:
-
-    {
-        "theme": "dark"
-    }
-
-A stored JSON null value is valid and must be returned successfully as:
-
-    null
-
-If the requested section does not exist, the API must return:
-
-    404 Not Found
-
-with the standard JSON error response.
-
-A missing persistence file is equivalent to the requested section not existing for this operation.
+A missing Section returns 404 Not Found with the standard JSON error response. A missing persistence file is equivalent to the requested Section not existing.
 
 ## Read All Sections
 
-The operation:
+    GET /<site>/api/<scope>/readAll
 
-    GET /<site>/api/readAll
+returns the selected persistence file's complete root object.
 
-returns the complete root JSON object for the current site.
-
-If the stored persistence data is:
-
-    {
-        "start": "Hello Mini Webserver",
-        "settings": {
-            "theme": "dark"
-        }
-    }
-
-the complete object is returned directly.
-
-If the site's persistence file does not yet exist, `readAll` must behave as though the site contains an empty persistence store and return:
+If that file does not yet exist, readAll returns:
 
     {}
 
 ## Write Sections
 
-The operation:
+    POST /<site>/api/<scope>/write
 
-    POST /<site>/api/write
+creates or replaces one or more Sections in the selected persistence file.
 
-creates or replaces one or more sections in the current site's persistence data.
+The request body must be a non-empty JSON object. Its top-level properties are the Sections to create or replace.
 
-The request body must contain a non-empty JSON object.
+For every supplied property:
 
-The top-level properties of the request object are the sections to create or replace.
+- A missing Section is created.
+- An existing Section is replaced.
+- Sections omitted from the request remain unchanged.
 
-Example:
-
-    {
-        "settings": {
-            "theme": "dark",
-            "language": "en"
-        },
-        "favorites": [
-            "Search A",
-            "Search B"
-        ]
-    }
-
-For each supplied top-level property:
-
-- A missing section is created
-- An existing section is replaced
-- Sections not included in the request remain unchanged
-
-A write request containing zero sections is invalid.
-
-A write request whose root value is not a JSON object is invalid.
-
-The request must use an acceptable JSON request content type.
-
-A successful write must return:
-
-    204 No Content
-
-with an empty response body.
+The request must use an acceptable JSON content type. Success returns 204 No Content with an empty body.
 
 ## Data File Creation
 
-If the site's persistence file does not yet exist when a valid write operation requires it, the server may create:
+A valid modifying operation may create the selected persistence file and its data directory when needed.
 
-    www/<site>/data/data.json
+For shared scope, creation is limited to:
 
-The server may also create the site's `data` directory when required.
+    <installation-root>\www\<existing-site>\data\data.json
 
-Any created directory or file must remain inside the already existing valid application directory.
+For private scope, creation is limited to:
 
-The API must never create an arbitrary application directory from an unknown site namespace.
+    %APPDATA%\MiniServerData\<existing-site>\data\data.json
+
+The API must never create a new application namespace from an unknown site or accept a client-provided filesystem path.
 
 ## Remove One Section
 
-The operation:
+    DELETE /<site>/api/<scope>/remove?section=<name>
 
-    DELETE /<site>/api/remove?section=<name>
+removes exactly one Section. Other Sections remain unchanged.
 
-removes exactly one named section from the current site's persistence data.
-
-Other sections must remain unchanged.
-
-A successful removal must return:
-
-    204 No Content
-
-with an empty response body.
-
-If the requested section does not exist, the operation must return:
-
-    404 Not Found
-
-with the standard JSON error response.
-
-A missing persistence file is equivalent to the requested section not existing.
+Success returns 204 No Content. A missing Section or missing selected persistence file returns 404 Not Found.
 
 ## Clear All Sections
 
-The operation:
+    DELETE /<site>/api/<scope>/clear
 
-    DELETE /<site>/api/clear
-
-resets the current site's persistence state to the logical equivalent of:
+resets the selected persistence file to the logical empty state:
 
     {}
 
-A successful clear must return:
+Clearing an empty or not-yet-created store is successful and idempotent. Success returns 204 No Content.
 
-    204 No Content
+## Persistence Concurrency and Integrity
 
-with an empty response body.
+write, remove, and clear are write operations.
 
-Clearing an already empty persistence store is successful.
+Each write operation must:
 
-Clearing a site whose persistence file does not yet exist is also successful.
+1. Obtain a short-lived exclusive file lock associated with the selected target persistence file.
+2. Use a bounded lock-acquisition timeout.
+3. Hold the lock for the complete read-modify-write operation.
+4. Write atomically so readers never observe partial JSON.
+5. Release the lock when the operation completes or fails.
 
-The operation is therefore idempotent.
+Failure to obtain the lock must fail cleanly. The intentionally simple external error remains:
 
-The operation must affect only the persistence file derived from the site namespace addressed by the request.
+    Write failed
 
-## Data Integrity
+Reads do not acquire a separate read lock. A reader must see either the previous complete file or the new complete file.
 
-Successful write, remove, and clear operations must leave valid JSON persistence data.
+Persistence-file locking is separate from Mini Server runtime startup and instance locking.
 
-The server must not intentionally leave a partially written or syntactically invalid JSON file after reporting success.
-
-If a persistence modification fails, the server must return an error instead of reporting success.
-
-The implementation should minimize the risk of corrupting an existing valid persistence file during replacement.
-
-If an existing persistence file contains invalid JSON or does not contain a JSON object at its root, the server must report an error rather than silently reinterpret or destructively reset the file.
+Successful modifications must leave valid JSON. If existing persistence data contains invalid JSON or a non-object root, the operation fails rather than silently resetting or reinterpreting the file.
 
 ## Application Isolation
 
-Every API operation must be scoped to the site namespace identified by the request URL.
+Every operation is scoped to the site and explicit persistence scope in its URL.
 
-For example:
+Clients cannot override the mapping through query parameters, request bodies, headers, Section names, or arbitrary paths.
 
-    /example/api/
+This is namespace and filesystem scoping, not authentication or authorization. Applications served by one Mini Server instance share an HTTP origin and are considered part of the same trusted local environment.
 
-maps to:
+Deliberately written code may address another valid site's API namespace or select either scope. The private scope remains user-specific storage rather than a hostile-application security boundary.
 
-    www/example/data/data.json
+## Successful Responses
 
-while:
-
-    /dashboard/api/
-
-maps to:
-
-    www/dashboard/data/data.json
-
-The client must not be able to override this mapping using:
-
-- Query parameters
-- Request bodies
-- Headers
-- Section names
-- Arbitrary filesystem paths
-- Other client-controlled persistence locations
-
-This is namespace and filesystem scoping.
-
-It is not authentication or authorization between hosted applications.
-
-Applications hosted by one Mini Server instance normally share the same HTTP origin.
-
-A deliberately written application may explicitly request another valid application's API namespace.
-
-For example, code loaded from:
-
-    /example/
-
-may deliberately request:
-
-    /dashboard/api/readAll
-
-Such a request is processed within the `dashboard` namespace because that namespace was explicitly addressed in the URL.
-
-Mini Server v1.0 does not authenticate hosted applications against each other.
-
-Hosted applications are therefore considered part of the same trusted local environment.
-
-## Successful HTTP Responses
-
-Operations returning JSON data must use:
-
-    200 OK
-
-with:
+JSON-returning operations use 200 OK with:
 
     Content-Type: application/json; charset=utf-8
 
-This applies to:
+Modifying operations use 204 No Content with an empty body.
 
-    GET /<site>/api/read
-    GET /<site>/api/readAll
+## Error Responses
 
-Successful modifying operations must use:
-
-    204 No Content
-
-with an empty response body.
-
-This applies to:
-
-    POST   /<site>/api/write
-    DELETE /<site>/api/remove
-    DELETE /<site>/api/clear
-
-## Error Response Format
-
-API errors must use a consistent JSON structure.
-
-Example:
+API errors use:
 
     {
         "error": {
@@ -443,138 +254,84 @@ Example:
         }
     }
 
-The `code` value must be a stable machine-readable error identifier.
+The API uses:
 
-The `message` value must be a concise human-readable description.
+- 400 Bad Request for malformed requests, missing/invalid scope, invalid Section names, invalid JSON, invalid payloads, or missing required input
+- 404 Not Found for missing Sections, unknown sites, or unknown operations
+- 405 Method Not Allowed for an unsupported method on a known operation
+- 415 Unsupported Media Type for an unacceptable write content type
+- 500 Internal Server Error for server-side, persistence, permission, atomic-write, or write-lock failures
 
-Browser-facing errors must not expose unnecessary absolute filesystem paths or sensitive internal implementation details.
-
-## HTTP Error Categories
-
-The API must use:
-
-    400 Bad Request
-
-for malformed requests, invalid section names, invalid JSON, invalid write payloads, or missing required request information.
-
-It must use:
-
-    404 Not Found
-
-for missing sections, unknown application sites, or unknown API operations.
-
-It must use:
-
-    405 Method Not Allowed
-
-when a known API operation is called using an unsupported HTTP method.
-
-It must use:
-
-    415 Unsupported Media Type
-
-when a write request does not provide an acceptable JSON request content type.
-
-It must use:
-
-    500 Internal Server Error
-
-for unexpected server-side or persistence failures that prevent the requested operation from completing.
-
-A failed operation must never return a successful HTTP status.
+A failed operation never returns success. Browser-facing errors must not expose unnecessary absolute filesystem paths.
 
 ## Acceptance Criteria
 
-REQ-003 is fulfilled when all of the following are true:
+REQ-003 is fulfilled when:
 
-- One central Java implementation handles the persistence API for all valid application sites.
-- Each site's API is available below `/<site>/api/`.
-- The site namespace is derived from the request path.
-- Unknown site namespaces do not cause new application directories to be created.
-- Reserved Mini Server directories are not treated as normal application persistence namespaces.
-- Each site uses its own `www/<site>/data/data.json` persistence file.
-- The persistence directory `www/<site>/data/` is not served by the normal static file handler.
-- Direct requests for `/<site>/data/data.json` do not expose persistence data.
-- `data.json` always uses a JSON object as its root value.
-- Top-level properties in `data.json` represent sections.
-- Section values may contain any valid JSON-compatible value.
-- Section names are validated and are never interpreted as filesystem paths.
-- `GET /<site>/api/read` retrieves one section value directly.
-- A stored JSON null section value is returned successfully.
-- Reading a missing section returns `404 Not Found`.
-- `GET /<site>/api/readAll` returns the complete root object.
-- `readAll` returns `{}` when the persistence file does not yet exist.
-- `POST /<site>/api/write` accepts a non-empty JSON object.
-- `write` can create one or more sections.
-- `write` can replace one or more existing sections.
-- Sections not included in a write request remain unchanged.
-- A successful write returns `204 No Content`.
-- `DELETE /<site>/api/remove` removes exactly one section.
-- Removing a missing section returns `404 Not Found`.
-- A successful removal returns `204 No Content`.
-- `DELETE /<site>/api/clear` resets the site persistence state.
-- Clearing an empty or not-yet-created persistence store succeeds.
-- A successful clear returns `204 No Content`.
-- Known operations reject unsupported HTTP methods with `405 Method Not Allowed`.
-- Invalid JSON and malformed requests do not result in successful responses.
-- Write requests with an unacceptable JSON content type return `415 Unsupported Media Type`.
-- API errors use the defined JSON error structure.
-- API responses do not expose unnecessary absolute filesystem paths.
-- Clients cannot supply arbitrary persistence filesystem locations.
-- Successful modifying operations leave valid JSON persistence data.
-- Server-side failures are reported as errors rather than success.
+- One central Java implementation handles persistence for every valid site.
+- Every operation explicitly selects private or shared scope.
+- No default or unscoped persistence API exists.
+- All HTTP routes use /<site>/api/<scope>/<operation>.
+- Shared scope maps to <installation-root>\www\<site>\data\data.json.
+- Private scope maps to %APPDATA%\MiniServerData\<site>\data\data.json.
+- Clients cannot provide arbitrary persistence paths.
+- Unknown sites do not create application directories.
+- Shared persistence is protected from static serving.
+- Private persistence remains outside the web root.
+- Every persistence file uses a JSON object root with top-level Sections.
+- Section values preserve all JSON-compatible value types.
+- Section names are validated and never treated as paths.
+- read returns one Section value, including stored null.
+- Missing Sections return 404 Not Found.
+- readAll returns the complete root object and returns {} for a missing file.
+- write accepts a non-empty object and creates or replaces supplied Sections while preserving others.
+- remove removes one Section without changing others.
+- clear resets the selected store to {} and is idempotent.
+- Successful modifications return 204 No Content.
+- Each write operation uses a bounded, short-lived exclusive file lock for its target.
+- Writes are atomic and readers never observe partial JSON.
+- Reads do not acquire a separate read lock.
+- Write-lock failure fails with the external message Write failed.
+- Invalid stored JSON or a non-object root is not silently overwritten.
+- API errors use the standard JSON structure and appropriate HTTP status.
+- Private storage is not described as an authentication or authorization boundary.
 
 ## Constraints
 
-The server-side implementation must remain generic.
+The server-side implementation remains generic, file-based, lightweight, and Java 8 compatible.
 
-Application-specific business rules must not be introduced into the central persistence API.
+No database, migration layer, legacy unscoped API, transaction service, or persistent operational logging architecture is required.
 
-The implementation must remain compatible with the project's approved Java runtime requirements.
-
-The persistence mechanism must remain file-based and must not require a database.
-
-The API contract defined by D-017 must remain consistent between the Java server, `mini-api.js`, example application, template package, tests, and documentation.
+The contract must remain consistent across the Java server, mini-api.js, examples, templates, tests, and documentation.
 
 ## Related Decisions
 
 - D-001 — Java 8 Compatibility
 - D-005 — No Database
 - D-006 — Generic Server-Side Data Handling
-- D-007 — One JSON Data File per Application
 - D-008 — Application Scope Is Derived from the URL
 - D-009 — Shared Central API Implementation
 - D-014 — Not Intended for Public Internet Use
 - D-015 — Persistence Data Is Not Served as Static Content
 - D-016 — Application Separation Is Namespace Isolation, Not Authentication
-- D-017 — HTTP and JSON API Contract
+- D-021 — Explicit Shared and Private Persistence Scopes
+- D-022 — Explicitly Scoped Persistence API Contract
+- D-023 — Concurrency-Safe Persistence Writes
 
 ## Related Architecture
 
-See:
+See docs/ARCHITECTURE.md, especially:
 
-docs/ARCHITECTURE.md
-
-Relevant sections include:
-
-- Central API
+- Storage and Runtime Boundaries
+- Central Persistence API
 - API Operations
-- Data Model
-- Application Isolation
-- Static File Serving
+- Persistence Data Model
+- Persistence Concurrency
+- Application and Scope Isolation
 
 ## Related Tasks
 
-See:
-
-    tasks/ACTIVE.md
-
-Relevant implementation tasks include:
-
-- T-004 — Implement Site Detection and Persistence Scoping
-- T-005 — Implement JSON Persistence Layer
-- T-006 — Implement HTTP API Endpoints
-- T-013 — Add Automated Tests
+See tasks/ACTIVE.md, especially T-004, T-005, T-006, and T-013.
 
 ## Target Release
 

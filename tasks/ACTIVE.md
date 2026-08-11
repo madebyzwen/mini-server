@@ -139,11 +139,11 @@ Generated build output belongs below:
 
     target/
 
-Local process runtime state belongs below:
+Local process runtime state belongs outside the project and installation below:
 
-    .runtime/
+    %LOCALAPPDATA%\MiniServer\runtime\
 
-Neither directory is project source content.
+Neither generated build output nor local runtime state is project source content. The legacy `.runtime/` path remains ignored so that accidental local artifacts are not tracked, but it is not the target runtime location.
 
 Both must remain excluded from normal Git tracking.
 
@@ -193,7 +193,7 @@ Acceptance:
 - No permanent `www/template/` application is introduced.
 - Generated Maven output is written below `target/`.
 - `target/` remains excluded from Git tracking.
-- `.runtime/` remains excluded from Git tracking.
+- Local runtime state is not created as project source, and `.runtime/` remains excluded from Git tracking as a safeguard.
 - Convenience scripts do not duplicate the authoritative Maven build configuration.
 - The initial Maven project can be compiled successfully once the minimum required source files for the implementation exist.
 - No functional Mini Server behavior is implemented merely to satisfy this project-structure task.
@@ -214,28 +214,31 @@ Related requirements:
 
 Description:
 
-Implement dynamic loopback server startup and the per-installation single-instance mechanism defined by D-018.
+Implement dynamic loopback server startup and the local per-user/computer single-instance mechanism defined by D-020.
 
-Each Mini Server installation must maintain runtime state outside the web root.
+A Mini Server installation may be used concurrently from different computers.
+
+Each local user/computer context maintains its own runtime coordination state outside the shared installation.
 
 The intended runtime location is:
 
-    <installation-root>/.runtime/
+    %LOCALAPPDATA%\MiniServer\runtime\
 
-with runtime files such as:
+with:
 
-    <installation-root>/.runtime/instance.lock
-    <installation-root>/.runtime/instance.json
+    startup.lock
+    instance.lock
+    instance.json
 
-The `.runtime/` directory may be created when required.
+The local runtime directory may be created when required.
 
-It must not be located below `www/` and must never be exposed through normal static file serving.
+Runtime lock and port state must not be located below the installation or `www/`, shared through a network drive, or exposed through static serving.
 
-### Instance Lock
+### Startup and Instance Locks
 
-Before starting the HTTP server, the process must attempt to acquire an exclusive instance lock for the current Mini Server installation.
+Before evaluating or changing local instance state, the process must acquire startup.lock using a bounded wait.
 
-The active process-owned lock is authoritative for determining whether another Mini Server server process is already running for that installation.
+The active process-owned instance.lock is authoritative for determining whether another Mini Server process is already running in the local user/computer context.
 
 A runtime state file by itself must not be treated as proof that an instance is active.
 
@@ -245,23 +248,25 @@ When the process terminates, the operating system must release the process-owned
 
 ### New Server Instance
 
-If the installation lock can be acquired:
+If no active process owns the local instance.lock:
 
-1. Acquire the exclusive instance lock.
-2. Invalidate stale runtime state from a previous execution.
-3. Bind the HTTP server exclusively to:
+1. Acquire startup.lock using a bounded wait.
+2. Invalidate stale local runtime state.
+3. Acquire and retain the exclusive instance.lock.
+4. Bind the HTTP server exclusively to:
 
        127.0.0.1
 
-4. Request TCP port:
+5. Request TCP port:
 
        0
 
-5. Allow the operating system to select an available local TCP port.
-6. Retrieve the actual assigned port from the running server instance.
-7. Confirm that the HTTP server is ready to accept requests.
-8. Publish the assigned port in the current runtime state.
-9. Continue running while retaining the instance lock.
+6. Allow the operating system to select an available local TCP port.
+7. Retrieve the actual assigned port from the running server instance.
+8. Confirm that the HTTP server is ready to accept requests.
+9. Publish the assigned port in local instance.json.
+10. Release startup.lock after startup state is stable.
+11. Continue running while retaining instance.lock.
 
 Mini Server must not:
 
@@ -272,7 +277,7 @@ Mini Server must not:
 
 ### Existing Server Instance
 
-If the installation lock cannot be acquired because another Mini Server process already owns it, the new process must not start another HTTP server.
+If another local Mini Server process already owns instance.lock, the new process must not start another HTTP server.
 
 Instead it must:
 
@@ -286,11 +291,11 @@ The repeated-start path must therefore reuse the existing Mini Server instance.
 
 ### Startup Race
 
-A second process may detect the active instance lock before the first process has finished publishing its runtime state.
+A second local process may encounter the active instance before valid runtime state is available.
 
 In this situation the second process must not start another server.
 
-It may wait and retry for valid runtime state for a short bounded period.
+It may wait and retry for valid runtime state for a short bounded period while coordinating through startup.lock.
 
 If the lock remains owned but valid runtime state cannot be obtained within that period, startup must fail with a clear diagnostic result.
 
@@ -300,21 +305,17 @@ The exact retry interval and timeout may be chosen during implementation, but th
 
 A stale runtime state file may remain after abnormal process termination.
 
-If the installation lock can be acquired, stale state must not prevent a new server from starting.
+If no active process owns instance.lock, stale state must not prevent a new server from starting.
 
 After acquiring the lock, the new process must invalidate stale state before starting and must publish fresh state only after its own server has successfully obtained its assigned port.
 
 An old stored port must never be reused solely because it remains in `instance.json`.
 
-### Persistence Safety
+### Persistence Concurrency Boundary
 
-Only one Mini Server process may normally operate on the persistence files of one installation.
+Local runtime locking does not protect shared persistence from Mini Server processes on other computers.
 
-The single-instance mechanism therefore prevents separate server processes from concurrently modifying:
-
-    www/<site>/data/data.json
-
-Concurrency between requests handled inside the one active server process remains the responsibility of the persistence implementation.
+Shared and private persistence writes are protected separately by the short-lived file-locking and atomic-write model defined by D-023 and implemented in T-005.
 
 Acceptance:
 
@@ -324,12 +325,13 @@ Acceptance:
 - The actual assigned port can be retrieved from the running server.
 - No fixed server port is required.
 - No manual port scanning is used.
-- Runtime state is stored outside `www/`.
-- `.runtime/` can be created when required.
-- An exclusive per-installation instance lock is acquired before starting a new server.
+- Runtime state is stored under `%LOCALAPPDATA%\MiniServer\runtime\`.
+- No runtime lock or port state is shared through the installation.
+- startup.lock coordinates local startup attempts using a bounded wait.
+- An exclusive local per-user/computer instance.lock is acquired before starting a new server.
 - The active server retains the instance lock for its lifetime.
-- Only one server process runs for one installation at a time.
-- Independent Mini Server installations may still run simultaneously.
+- Only one server process runs in one local user/computer context.
+- Different computers may run the same shared installation simultaneously.
 - Stale runtime state is invalidated before fresh runtime state is published.
 - The assigned port is published only after successful server startup.
 - A runtime state file alone is not treated as proof of an active instance.
@@ -337,9 +339,11 @@ Acceptance:
 - A repeated start can obtain the active instance's runtime port.
 - A startup race does not result in a competing server process.
 - Failure to obtain valid runtime state during a repeated-start race produces a diagnostic error.
+- Runtime lock and state waits are bounded and deterministic.
 - Abnormal process termination does not permanently block future startup.
 - The process-owned instance lock is released when the owning process terminates.
 - Startup failures are reported clearly.
+- Runtime instance locking is not used as persistence-file locking.
 
 ---
 
@@ -396,11 +400,17 @@ Implement detection of the current site from the request path.
 
 The first application path component must determine which site namespace owns the request.
 
-Persistence operations must map predictably to:
+Every persistence operation must explicitly select private or shared scope.
 
-www/<site>/data/data.json
+Shared operations map predictably to:
 
-based on the site namespace addressed by the request URL.
+    <installation-root>\www\<site>\data\data.json
+
+Private operations map predictably to:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
+based on the site namespace and scope addressed by the request URL.
 
 The client must not be able to provide an arbitrary filesystem path or persistence location.
 
@@ -409,7 +419,8 @@ This task provides namespace and filesystem scoping. It does not introduce authe
 Acceptance:
 
 - Site names are derived from request paths.
-- Requests are mapped to the persistence file belonging to the addressed site namespace.
+- Requests are mapped to the private or shared persistence file belonging to the addressed site namespace.
+- No default or unscoped persistence mapping exists.
 - Clients cannot override the derived persistence location with an arbitrary filesystem path or storage location.
 - Normal MiniApi usage is automatically scoped to the current application's API namespace.
 - Invalid or unsafe filesystem paths are rejected.
@@ -428,11 +439,15 @@ Related requirements:
 
 Description:
 
-Implement generic file-based JSON persistence for each valid application site.
+Implement generic file-based JSON persistence for each valid application site and explicit persistence scope.
 
-The persistence location is:
+The shared location is:
 
-    www/<site>/data/data.json
+    <installation-root>\www\<site>\data\data.json
+
+The private location is:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
 
 Each persistence file must contain a JSON object at its root.
 
@@ -464,11 +479,21 @@ The persistence layer must not create arbitrary application directories from unk
 
 If an existing persistence file contains invalid JSON or does not contain a JSON object at its root, the operation must fail rather than silently resetting or reinterpreting the file.
 
+write, remove, and clear must each obtain a short-lived exclusive file lock associated with the target persistence file using a bounded timeout.
+
+The complete read-modify-write operation must occur while holding that lock. Writes must be atomic so readers observe the previous complete file or the new complete file. Reads do not acquire a separate read lock.
+
+Failure to obtain the required lock must fail with the external error `Write failed`.
+
+Persistence-file locks are separate from T-002 runtime locks.
+
 Successful modifying operations must leave valid JSON persistence data.
 
 Acceptance:
 
 - Persistence files use a JSON object as their root value.
+- Shared and private persistence locations are derived by the server.
+- Every persistence operation has an explicit scope.
 - Top-level properties represent sections.
 - Section values preserve valid JSON-compatible data without application-specific interpretation.
 - `read` can retrieve one existing section.
@@ -486,7 +511,10 @@ Acceptance:
 - A non-object persistence root is rejected.
 - Failed modifications are not reported as successful.
 - Successful modifications do not intentionally leave invalid or partially written JSON.
-- Persistence files are created only inside an already existing valid application directory.
+- Modifying operations use a bounded, short-lived exclusive target-file lock.
+- Writes are atomic and reads remain lock-free.
+- A write-lock timeout fails cleanly with `Write failed`.
+- Persistence files are created only inside an approved location for an already existing valid application namespace.
 
 ---
 
@@ -501,19 +529,21 @@ Related requirements:
 
 Description:
 
-Implement the central server-side persistence API according to D-017.
+Implement the central server-side persistence API according to D-022.
 
 The required endpoints and HTTP methods are:
 
-    GET    /<site>/api/read?section=<name>
-    GET    /<site>/api/readAll
-    POST   /<site>/api/write
-    DELETE /<site>/api/remove?section=<name>
-    DELETE /<site>/api/clear
+    GET    /<site>/api/<scope>/read?section=<name>
+    GET    /<site>/api/<scope>/readAll
+    POST   /<site>/api/<scope>/write
+    DELETE /<site>/api/<scope>/remove?section=<name>
+    DELETE /<site>/api/<scope>/clear
+
+scope must be private or shared. No unscoped endpoint exists.
 
 All valid application sites must use the same central Java implementation.
 
-The site namespace must be derived from the request URL.
+The site namespace and persistence scope must be derived from the request URL.
 
 The client must not be able to supply an arbitrary filesystem path or persistence location.
 
@@ -558,7 +588,7 @@ The API must use the following error categories where applicable:
     415 Unsupported Media Type
     500 Internal Server Error
 
-Section names must follow the validation rules defined by D-017.
+Section names must follow the validation rules preserved by D-022.
 
 An unknown application namespace must not cause Mini Server to create a new application directory.
 
@@ -566,19 +596,19 @@ Reserved Mini Server areas such as `www/_shared/` must not be treated as normal 
 
 Acceptance:
 
-- `GET /<site>/api/read` returns an existing section with `200 OK`.
+- `GET /<site>/api/<scope>/read` returns an existing section with `200 OK`.
 - Reading a missing section returns `404 Not Found`.
 - A stored JSON null section value returns successfully rather than being treated as missing.
-- `GET /<site>/api/readAll` returns the complete root object with `200 OK`.
+- `GET /<site>/api/<scope>/readAll` returns the complete root object with `200 OK`.
 - `readAll` returns `{}` when the persistence file does not yet exist.
-- `POST /<site>/api/write` accepts a valid non-empty JSON object.
+- `POST /<site>/api/<scope>/write` accepts a valid non-empty JSON object.
 - A successful write returns `204 No Content`.
 - Invalid or empty write payloads return an appropriate error.
 - Write requests with an unacceptable JSON content type return `415 Unsupported Media Type`.
-- `DELETE /<site>/api/remove` removes one existing section.
+- `DELETE /<site>/api/<scope>/remove` removes one existing section.
 - Removing a missing section returns `404 Not Found`.
 - A successful removal returns `204 No Content`.
-- `DELETE /<site>/api/clear` clears the current site's persistence state.
+- `DELETE /<site>/api/<scope>/clear` clears the selected persistence state.
 - Clearing an empty or not-yet-created persistence store succeeds.
 - A successful clear returns `204 No Content`.
 - Known API operations reject unsupported HTTP methods with `405 Method Not Allowed`.
@@ -587,6 +617,7 @@ Acceptance:
 - API errors use the defined JSON error structure.
 - Browser-facing API errors do not expose unnecessary absolute filesystem paths.
 - Requests are scoped to the site namespace addressed by the URL.
+- Every request explicitly selects private or shared scope.
 - Clients cannot override the derived persistence location with arbitrary filesystem paths.
 - Failed server operations never return a successful HTTP status.
 
@@ -610,15 +641,22 @@ The library must expose the global object:
 
     MiniApi
 
-with the public v1.0 methods:
+with the public v1.0 operation-first interface:
 
-    MiniApi.readSection(section)
-    MiniApi.readAll()
-    MiniApi.write(data)
-    MiniApi.removeSection(section)
-    MiniApi.clear()
+    MiniApi.read(section).private()
+    MiniApi.read(section).shared()
+    MiniApi.readAll().private()
+    MiniApi.readAll().shared()
+    MiniApi.write(data).private()
+    MiniApi.write(data).shared()
+    MiniApi.remove(section).private()
+    MiniApi.remove(section).shared()
+    MiniApi.clear().private()
+    MiniApi.clear().shared()
 
-All public MiniApi operations must be asynchronous and return native JavaScript Promises.
+Every persistence operation requires an explicit terminal `.private()` or `.shared()` selector. No default scope exists, and scope-first syntax is invalid.
+
+The terminal scope selector executes the asynchronous operation and returns a native JavaScript Promise.
 
 The library must use browser-native functionality and remain dependency-free unless a later approved decision changes this requirement.
 
@@ -634,7 +672,7 @@ For a page below:
 
 MiniApi must automatically use:
 
-    /example/api/
+    /example/api/<scope>/
 
 as its persistence API namespace.
 
@@ -644,15 +682,16 @@ MiniApi must not accept arbitrary filesystem paths or persistence locations.
 
 Automatic site detection is a convenience and scoping mechanism, not an authentication boundary.
 
-### readSection
+### read
 
-The method:
+The operation:
 
-    MiniApi.readSection(section)
+    MiniApi.read(section).private()
+    MiniApi.read(section).shared()
 
 must send:
 
-    GET /<site>/api/read?section=<encoded-name>
+    GET /<site>/api/<scope>/read?section=<encoded-name>
 
 The section name must be validated before the request where practical.
 
@@ -672,11 +711,12 @@ A missing section or another unsuccessful HTTP response must reject the Promise.
 
 The method:
 
-    MiniApi.readAll()
+    MiniApi.readAll().private()
+    MiniApi.readAll().shared()
 
 must send:
 
-    GET /<site>/api/readAll
+    GET /<site>/api/<scope>/readAll
 
 A successful `200 OK` JSON response must be deserialized automatically.
 
@@ -690,7 +730,8 @@ An empty persistence store therefore resolves to:
 
 The method:
 
-    MiniApi.write(data)
+    MiniApi.write(data).private()
+    MiniApi.write(data).shared()
 
 must accept a native JavaScript object whose own top-level properties represent the sections to create or replace.
 
@@ -704,7 +745,7 @@ Example:
             "Search A",
             "Search B"
         ]
-    });
+    }).shared();
 
 The caller must not need to use:
 
@@ -714,7 +755,7 @@ MiniApi must serialize the request body internally.
 
 The request must use:
 
-    POST /<site>/api/write
+    POST /<site>/api/<scope>/write
 
 with an appropriate JSON content type.
 
@@ -725,7 +766,7 @@ The supplied `data` value must be rejected when it is:
 - not an object;
 - an object containing no own top-level properties.
 
-Each top-level property name must satisfy the section-name rules defined by D-017.
+Each top-level property name must satisfy the section-name rules defined by D-022.
 
 The supplied section values must be representable as valid JSON.
 
@@ -741,15 +782,16 @@ After successful completion, the Promise must resolve with:
 
 MiniApi must not expect a JSON response body for a successful write.
 
-### removeSection
+### remove
 
 The method:
 
-    MiniApi.removeSection(section)
+    MiniApi.remove(section).private()
+    MiniApi.remove(section).shared()
 
 must send:
 
-    DELETE /<site>/api/remove?section=<encoded-name>
+    DELETE /<site>/api/<scope>/remove?section=<encoded-name>
 
 The section name must be validated and URL-encoded correctly.
 
@@ -767,11 +809,12 @@ A missing section or another unsuccessful HTTP response must reject the Promise.
 
 The method:
 
-    MiniApi.clear()
+    MiniApi.clear().private()
+    MiniApi.clear().shared()
 
 must send:
 
-    DELETE /<site>/api/clear
+    DELETE /<site>/api/<scope>/clear
 
 A successful server response is:
 
@@ -785,7 +828,7 @@ MiniApi must not attempt to parse a response body after a successful clear opera
 
 ### Section Validation
 
-Section names supplied to MiniApi must follow the API contract defined by D-017.
+Section names supplied to MiniApi must follow the API contract defined by D-022.
 
 A valid section name:
 
@@ -799,12 +842,12 @@ Unicode characters and normal characters such as spaces, hyphens, underscores, a
 
 The same section-name validation must be applied to:
 
-    MiniApi.readSection(section)
-    MiniApi.removeSection(section)
+    MiniApi.read(section).private()
+    MiniApi.remove(section).shared()
 
 and to the top-level property names supplied to:
 
-    MiniApi.write(data)
+    MiniApi.write(data).private()
 
 Client-side validation must remain generic and must not contain application-specific business rules.
 
@@ -822,11 +865,11 @@ or:
 
 when using MiniApi.
 
-Successful `readSection()` and `readAll()` responses must be parsed into native JavaScript values.
+Successful `read()` and `readAll()` responses must be parsed into native JavaScript values.
 
 `write()` must serialize native JavaScript data into the request body.
 
-Successful `write()`, `removeSection()`, and `clear()` operations return `204 No Content` and therefore must not trigger JSON response parsing.
+Successful `write()`, `remove()`, and `clear()` operations return `204 No Content` and therefore must not trigger JSON response parsing.
 
 ### Error Handling
 
@@ -863,13 +906,13 @@ Unexpected or malformed server responses must reject rather than being silently 
 
 ### HTTP Contract
 
-MiniApi must use exactly the server-side API contract defined by D-017:
+MiniApi must use exactly the server-side API contract defined by D-022:
 
-    GET    /<site>/api/read?section=<name>
-    GET    /<site>/api/readAll
-    POST   /<site>/api/write
-    DELETE /<site>/api/remove?section=<name>
-    DELETE /<site>/api/clear
+    GET    /<site>/api/<scope>/read?section=<name>
+    GET    /<site>/api/<scope>/readAll
+    POST   /<site>/api/<scope>/write
+    DELETE /<site>/api/<scope>/remove?section=<name>
+    DELETE /<site>/api/<scope>/clear
 
 MiniApi must not substitute different HTTP methods or endpoint names.
 
@@ -901,16 +944,15 @@ Acceptance:
 
 - `www/_shared/mini-api.js` exists.
 - The library exposes the global `MiniApi` object.
-- `MiniApi.readSection(section)` exists.
-- `MiniApi.readAll()` exists.
-- `MiniApi.write(data)` exists.
-- `MiniApi.removeSection(section)` exists.
-- `MiniApi.clear()` exists.
-- Every public MiniApi method returns a Promise.
+- Public operations are `read`, `readAll`, `write`, `remove`, and `clear`.
+- Every operation requires a terminal `.private()` or `.shared()`.
+- Operation-first chain order is enforced and no default scope exists.
+- The terminal scope selector returns a Promise.
 - MiniApi automatically derives the current site namespace.
 - Application code does not need to configure its site name.
-- `readSection()` uses the correct GET endpoint.
-- `readSection()` resolves with the native stored section value.
+- Every generated endpoint uses `/<site>/api/<scope>/<operation>`.
+- `read()` uses the correct GET endpoint.
+- `read()` resolves with the native stored section value.
 - A stored JSON null value resolves successfully to null.
 - `readAll()` uses the correct GET endpoint.
 - `readAll()` resolves with the complete native root object.
@@ -924,7 +966,7 @@ Acceptance:
 - MiniApi performs JSON deserialization internally.
 - Application code does not normally require manual `JSON.stringify()` or `JSON.parse()`.
 - A successful write resolves with `undefined`.
-- `removeSection()` uses the correct DELETE endpoint.
+- `remove()` uses the correct DELETE endpoint.
 - A successful removal resolves with `undefined`.
 - `clear()` uses the correct DELETE endpoint.
 - A successful clear resolves with `undefined`.
@@ -954,6 +996,8 @@ www/example/
 
 The application must demonstrate all public MiniApi operations.
 
+Every demonstration must use operation-first chaining with an explicit private or shared selector. The example must make both scopes understandable.
+
 The example should remain small and developer-focused.
 
 Acceptance:
@@ -965,7 +1009,7 @@ Acceptance:
 - Remove can be demonstrated.
 - Clear can be demonstrated.
 - The application uses the shared mini-api.js library.
-- The application uses its own data/data.json file.
+- The application demonstrates both shared and private persistence locations.
 
 ---
 
@@ -1003,9 +1047,9 @@ The template must include a minimal visible:
 
 demonstration.
 
-The displayed value must be loaded from the application's persistence data using:
+The displayed value must be loaded from the application's bundled shared persistence data using:
 
-    MiniApi.readSection("start")
+    MiniApi.read("start").shared()
 
 The template must remain application-neutral and suitable as a clean starting point for developers.
 
@@ -1016,9 +1060,9 @@ Acceptance:
 - The template can be extracted into a new first-level application directory below `www/`.
 - The extracted application loads successfully.
 - The extracted application uses the shared `mini-api.js` library.
-- The extracted application has its own `data/data.json` persistence file.
+- The extracted application can use its shared `data/data.json` and private user-profile persistence file.
 - The template demonstrates the public MiniApi interface.
-- `Hello Mini Webserver` is displayed using data returned by `MiniApi.readSection("start")`.
+- `Hello Mini Webserver` is displayed using data returned by `MiniApi.read("start").shared()`.
 - The template clearly indicates that its demonstration content may be replaced by the developer.
 - Creating a new application from the template does not require application-specific Java server changes.
 
@@ -1036,7 +1080,7 @@ Related requirements:
 
 Description:
 
-Implement Microsoft Edge launch behavior for both a newly started Mini Server instance and a repeated start of an already running installation.
+Implement Microsoft Edge launch behavior for both a newly started local Mini Server instance and a repeated start in the same local user/computer context.
 
 The browser URL must always be constructed from the actual active Mini Server instance.
 
@@ -1054,7 +1098,7 @@ Mini Server must never construct the browser URL using a guessed, fixed, stale, 
 
 After a new Mini Server server instance has:
 
-1. Acquired the installation instance lock
+1. Acquired local startup.lock and instance.lock as defined by D-020
 2. Bound successfully to `127.0.0.1`
 3. Requested TCP port `0`
 4. Obtained the actual operating-system-assigned port
@@ -1073,7 +1117,7 @@ Edge must not be opened before the active server is ready.
 
 ### Repeated Start
 
-When startup detects that the same Mini Server installation already has an active server instance, no second HTTP server is started.
+When startup detects an active server in the same local user/computer context, no second HTTP server is started.
 
 The repeated-start process obtains the active server port from valid runtime state.
 
@@ -1145,7 +1189,7 @@ Closing:
 
 must not intentionally terminate the active Mini Server Java process.
 
-A later desktop start can therefore reopen the already running Mini Server instance using the repeated-start behavior defined by D-018.
+A later desktop start can therefore reopen the already running local Mini Server instance using the repeated-start behavior defined by D-020.
 
 Acceptance:
 
@@ -1230,6 +1274,7 @@ Related requirements:
 - REQ-002
 - REQ-003
 - REQ-004
+- REQ-006
 - REQ-007
 - REQ-008
 
@@ -1242,13 +1287,18 @@ Priority should be given to:
 - Path handling
 - Path traversal prevention
 - Site isolation
+- Explicit shared/private persistence mapping
 - JSON read and write behavior
+- Bounded persistence write-lock behavior
+- Atomic persistence writes
 - Section replacement
 - Section removal
 - Clear behavior
 - Invalid JSON handling
 - Invalid API requests
 - Dynamic port startup
+- Local per-user/computer single-instance behavior
+- Shared-installation use from separate computer contexts
 
 Acceptance:
 

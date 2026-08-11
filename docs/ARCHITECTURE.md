@@ -2,262 +2,210 @@
 
 ## Overview
 
-Mini Server is a lightweight web server intended for local or internal use.
+Mini Server is a lightweight web server for local or trusted internal web applications.
 
-The server hosts multiple independent small web applications below a shared `www` root directory.
-
-Each web application is represented by its own first-level subdirectory below `www`.
+A Mini Server distribution may be located on a local disk, shared network drive, or group drive. Multiple users on different computers may use the same physical installation concurrently. The installation files may therefore be shared, while every running HTTP server and its coordination state remain local to one user/computer context.
 
 The server provides:
 
-- Static file serving
-- A central JSON persistence API
+- Static file serving from a shared `www` root
+- A central, explicitly scoped JSON persistence API
+- Shared and private per-application persistence
 - A shared JavaScript client library
-- Per-application JSON data storage
-- Isolation between individual web applications
+- Dynamic loopback-only HTTP startup
+- Local per-user/computer instance coordination
+- Concurrency-safe file persistence
 
-The server itself does not interpret application-specific data.
+The server remains generic and does not interpret application-specific data.
 
-## Runtime Structure
+## Storage and Runtime Boundaries
 
-The basic runtime structure is:
+Mini Server distinguishes four physical areas.
 
-    mini-server/
-    ├── .runtime/
-    │   ├── instance.lock
-    │   └── instance.json
-    ├── server/
-    │   └── ...
+### Shared Installation
+
+A representative distribution is:
+
+    <installation-root>\
+    ├── mini-server.jar
     ├── miniweb-template.zip
-    └── www/
-        ├── _shared/
+    ├── startup files
+    └── www\
+        ├── _shared\
         │   └── mini-api.js
-        ├── example/
+        ├── example\
         │   ├── index.html
-        │   ├── assets/
-        │   └── data/
+        │   ├── assets\
+        │   └── data\
         │       └── data.json
-        └── another-app/
-            ├── index.html
-            ├── assets/
-            └── data/
-                └── data.json
+        └── another-app\
+            └── ...
 
-The `.runtime/` directory is created and managed as local runtime state. It is outside the web root and must never be exposed through normal static file serving.
+The installation may be shared by multiple users and computers. It contains the server distribution, web applications, and shared persistence data.
 
-The runtime files represent the current installation instance state. `instance.lock` is used for exclusive instance ownership, while `instance.json` contains runtime information such as the currently assigned TCP port.
+It must not contain authoritative machine- or process-specific runtime coordination state. In particular, an installation-level `.runtime` directory is not part of the target runtime architecture.
 
-The Java source and build layout is defined by D-019. The simplified `server/` representation above describes the runtime distribution concept and does not represent the Maven source tree.
+### Local Runtime State
+
+Runtime coordination state is local to the current Windows user/computer context:
+
+    %LOCALAPPDATA%\MiniServer\runtime\
+    ├── startup.lock
+    ├── instance.lock
+    └── instance.json
+
+This state describes only the local loopback server:
+
+- `startup.lock` serializes concurrent local startup attempts.
+- `instance.lock` is held by the active local server process for its lifetime and is authoritative for whether that instance is active.
+- `instance.json` publishes repeated-start information, including the dynamically assigned local TCP port.
+
+These files are never served as web content and are never coordinated through a shared installation.
+
+### Shared Persistence
+
+Shared application persistence is stored with the application:
+
+    <installation-root>\www\<site>\data\data.json
+
+When the installation is on a network or group drive, this file is shared by users of that installation.
+
+### Private Persistence
+
+Private application persistence is stored in the current Windows user's profile:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
+This structure intentionally mirrors the shared application's `data\data.json` structure.
+
+`private` means user-profile storage rather than shared-installation storage. It is not authentication, authorization, encryption, or a security boundary between mutually hostile applications.
+
+The Java source and build layout is defined by D-019 and remains separate from these runtime locations.
 
 ## Web Application Model
 
-Each first-level directory below `www` represents an independent web application.
+Each valid first-level directory below `www` represents a web application:
 
-Examples:
+    www\example\
+    www\dashboard\
+    www\notes\
 
-```text
-www/example/
-www/dashboard/
-www/notes/
-www/my-app/
-```
+An application owns its static HTML, CSS, JavaScript, and assets. It can use both persistence scopes:
 
-A web application owns its own:
+    shared:  <installation-root>\www\<site>\data\data.json
+    private: %APPDATA%\MiniServerData\<site>\data\data.json
 
-- Static HTML files
-- CSS
-- JavaScript
-- Assets
-- JSON persistence file
-
-The standard persistence location for an application is:
-
-```text
-www/<site>/data/data.json
-```
-
-For example:
-
-```text
-www/example/data/data.json
-www/dashboard/data/data.json
-```
+Both scopes use the same JSON structure and persistence operations. Every operation must select one scope explicitly; there is no default scope.
 
 ## Static File Serving
 
-Static resources are served from the `www` directory.
+Static resources are served from `www`.
 
-A request such as:
+For example:
 
     /example/index.html
 
 maps to:
 
-    www/example/index.html
+    <installation-root>\www\example\index.html
 
-Normal application resources such as HTML, CSS, JavaScript, images, text files, and static JSON resources may be served from locations inside the application's directory.
+The server prevents path traversal outside the configured web root.
 
-The server must prevent path traversal outside the configured `www` root.
-
-### Reserved Persistence Directory
+### Reserved Shared Persistence Directory
 
 The directory:
 
-    www/<site>/data/
+    <installation-root>\www\<site>\data\
 
-is reserved for Mini Server persistence.
-
-It is not part of the application's publicly served static content.
+is reserved for shared Mini Server persistence and is not public static content.
 
 A direct request such as:
 
     /example/data/data.json
 
-must not return:
+must not expose the shared persistence file.
 
-    www/example/data/data.json
+Private persistence is outside `www` and is likewise never available through normal static file serving.
 
-Files below the reserved persistence directory must not be accessible through the normal static file handler.
+Normal static JSON resources may still be served from non-reserved locations such as:
 
-Persistent application data is accessed exclusively through the site's JSON API.
+    www\example\assets\config.json
 
-This restriction applies specifically to the `data` directory directly below an application directory. It does not prohibit an application from serving ordinary static JSON files from other locations such as:
+## Central Persistence API
 
-    www/example/assets/config.json
+The persistence API is implemented once in the Java server. Individual applications do not implement separate server-side APIs.
 
-The persistence directory remains below the application directory so that an application and its data retain a predictable, portable structure, while the API remains the controlled access path for persistent data.
+The request URL identifies:
 
-## Central API
+- The site from the first application path component
+- The mandatory persistence scope, `private` or `shared`
+- The persistence operation
 
-The API is implemented once in the Java server.
+The canonical route shape is:
 
-Individual web applications do not contain their own server-side API implementations.
-
-The site is derived from the first path component of the request.
+    /<site>/api/<scope>/<operation>
 
 For example:
 
-```text
-/example/api/read?section=settings
-```
-
-is interpreted as:
-
-```text
-site = example
-operation = read
-section = settings
-```
-
-The server automatically maps the request to:
-
-```text
-www/example/data/data.json
-```
-
-Likewise:
-
-```text
-/dashboard/api/read?section=settings
-```
+    /dashboard/api/private/read?section=settings
 
 maps to:
 
-```text
-www/dashboard/data/data.json
-```
+    %APPDATA%\MiniServerData\dashboard\data\data.json
 
-The API implementation is therefore shared globally while each application receives a logically separate API namespace through its URL path.
+while:
+
+    /dashboard/api/shared/read?section=settings
+
+maps to:
+
+    <installation-root>\www\dashboard\data\data.json
+
+The server derives and validates these locations. Clients never provide arbitrary filesystem paths.
+
+An API namespace is valid only when the corresponding first-level application directory exists below `www`. Reserved areas such as `www\_shared\` are not application namespaces.
 
 ## API Operations
 
-The central persistence API uses the following HTTP contract:
+The scoped HTTP contract is:
 
-    GET    /<site>/api/read?section=<name>
-    GET    /<site>/api/readAll
-    POST   /<site>/api/write
-    DELETE /<site>/api/remove?section=<name>
-    DELETE /<site>/api/clear
+    GET    /<site>/api/<scope>/read?section=<name>
+    GET    /<site>/api/<scope>/readAll
+    POST   /<site>/api/<scope>/write
+    DELETE /<site>/api/<scope>/remove?section=<name>
+    DELETE /<site>/api/<scope>/clear
 
-The HTTP method is part of the API contract.
+`<scope>` must be `private` or `shared`. Unscoped routes and the alternative layout `/<site>/<scope>/api/<operation>` are invalid.
 
 ### read
 
-    GET /<site>/api/read?section=<name>
-
-Reads one named section from the site's persistence data.
-
-The stored JSON value of the section is returned directly with:
-
-    200 OK
-
-A missing section returns:
-
-    404 Not Found
-
-A stored JSON `null` value is valid and is therefore distinguishable from a missing section by the HTTP status.
+`read` returns one named Section's stored JSON value directly with `200 OK`. A stored JSON `null` is valid. A missing Section returns `404 Not Found`.
 
 ### readAll
 
-    GET /<site>/api/readAll
-
-Returns the site's complete persistence root object with:
-
-    200 OK
-
-If the persistence file does not yet exist, the logical persistence state is empty and the operation returns:
+`readAll` returns the complete root JSON object with `200 OK`. A not-yet-created persistence file behaves as an empty store and returns:
 
     {}
 
 ### write
 
-    POST /<site>/api/write
-
-Creates or replaces one or more sections.
-
-The request body is a non-empty JSON object whose top-level properties are the sections to create or replace.
-
-Sections that are not included in the request remain unchanged.
-
-A successful write returns:
-
-    204 No Content
+`write` accepts a non-empty JSON object whose top-level properties are Sections to create or replace. Sections omitted from the request remain unchanged. Success returns `204 No Content`.
 
 ### remove
 
-    DELETE /<site>/api/remove?section=<name>
-
-Removes exactly one named section.
-
-A successful removal returns:
-
-    204 No Content
-
-A missing section returns:
-
-    404 Not Found
+`remove` removes exactly one named Section. Other Sections remain unchanged. Success returns `204 No Content`; a missing Section returns `404 Not Found`.
 
 ### clear
 
-    DELETE /<site>/api/clear
-
-Resets the site's persistence state to:
-
-    {}
-
-A successful clear returns:
-
-    204 No Content
-
-Clearing an already empty or not-yet-created persistence store is successful and is therefore idempotent.
+`clear` resets the selected persistence file to the logical empty state `{}`. Clearing an empty or not-yet-created store succeeds with `204 No Content`.
 
 ### HTTP Responses
 
-Operations returning JSON data use:
+JSON responses use:
 
     Content-Type: application/json; charset=utf-8
 
-API errors use a consistent JSON structure:
+API errors use:
 
     {
         "error": {
@@ -266,25 +214,15 @@ API errors use a consistent JSON structure:
         }
     }
 
-The API uses the following error categories:
+The API uses the established `400`, `404`, `405`, `415`, and `500` error categories. A persistence write-lock failure uses the intentionally simple external message:
 
-    400 Bad Request
-    404 Not Found
-    405 Method Not Allowed
-    415 Unsupported Media Type
-    500 Internal Server Error
+    Write failed
 
-Detailed request validation and error behavior are defined by D-017 and the active API requirements.
+Detailed behavior is defined by D-022 and the active API requirements.
 
-## Data Model
+## Persistence Data Model
 
-Each application's persistence file uses a JSON object as its root structure.
-
-The standard persistence location is:
-
-    www/<site>/data/data.json
-
-The top-level properties of the root object are named sections.
+Every shared or private persistence file contains a JSON object at its root. Top-level properties are named Sections.
 
 Example:
 
@@ -299,391 +237,177 @@ Example:
         ]
     }
 
-The empty persistence state is:
+The empty state is `{}`. An array, string, number, boolean, or null is not a valid root value.
 
-    {}
+A Section value may be any JSON-compatible object, array, string, number, boolean, or null. The server does not interpret its application-specific meaning.
 
-The root value must always be a JSON object.
+A valid Section name:
 
-An array, string, number, boolean, or null value is not a valid persistence root.
+- Contains between 1 and 128 characters
+- Is not empty
+- Has no leading or trailing whitespace
+- Contains no control characters
 
-### Sections
+Section names are JSON property names and are never filesystem paths.
 
-Each top-level property represents one section.
+If a selected persistence file is missing, a valid modifying operation may create the required `data` directory and `data.json` inside the server-derived shared or private site location.
 
-A section value may contain any valid JSON-compatible value, including:
+Invalid JSON or a non-object root is an error. Mini Server does not silently reinterpret or destructively reset invalid persistence data.
 
-- Objects
-- Arrays
-- Strings
-- Numbers
-- Booleans
-- Null
+## Persistence Concurrency
 
-The server does not interpret the application-specific meaning or internal structure of section values.
+Shared persistence can be accessed by Mini Server processes on different computers. Private persistence may also encounter concurrent access within the user's environment.
 
-A stored JSON null value is valid and is distinct from a missing section.
+`write`, `remove`, and `clear` therefore:
 
-### Section Names
+1. Obtain a short-lived exclusive file lock associated with the target persistence file.
+2. Use a bounded lock-acquisition timeout.
+3. Perform the complete read-modify-write operation while holding the lock.
+4. Replace the persistence data atomically.
+5. Release the lock immediately after the write completes or fails.
 
-Section names are logical JSON property names.
+Failure to obtain the lock fails the write cleanly.
 
-A valid section name:
+Reads do not acquire a separate read lock. Atomic replacement ensures that a reader sees either the previous complete file or the new complete file, never a partial write.
 
-- contains between 1 and 128 characters;
-- is not empty;
-- has no leading or trailing whitespace;
-- contains no control characters.
+Persistence-file locks are distinct from runtime locks:
 
-Unicode characters and normal characters such as spaces, hyphens, underscores, and periods may appear inside a section name.
+- Runtime locks coordinate one local server instance.
+- Persistence locks protect one target data file across local processes and computers.
 
-Section names must never be interpreted as filesystem paths.
+The architecture does not introduce a database, transaction service, or persistent operational logging system.
 
-### Missing Persistence File
+## Application and Scope Isolation
 
-A missing persistence file represents a persistence store that has not yet been created.
+Mini Server derives the target site and persistence scope from the request URL.
 
-For read-all and clear operations, its logical state is equivalent to:
+This provides predictable namespace and filesystem mapping and prevents arbitrary client-supplied persistence paths. It does not provide authentication or authorization between hosted applications.
 
-    {}
-
-Reading or removing a specific section from a missing persistence file behaves as though that section does not exist.
-
-A valid write operation may create the required `data` directory and `data.json` file inside an already existing application directory.
-
-### Invalid Persistence Data
-
-If an existing `data.json` file contains invalid JSON or does not contain a JSON object at its root, Mini Server must treat the persistence data as invalid.
-
-The server must not silently reinterpret or destructively reset invalid persistence data.
-
-The operation must fail and report an appropriate API error.
-
-The detailed persistence contract is defined by D-017 and the active JSON API requirement.
-
-## Application Isolation
-
-Mini Server separates applications by URL namespace and persistence location.
-
-Each application uses its own persistence file:
-
-    www/<site>/data/data.json
-
-and its own API namespace:
-
-    /<site>/api/
-
-For example:
-
-    /example/api/read?section=settings
-
-is mapped to:
-
-    www/example/data/data.json
-
-while:
-
-    /dashboard/api/read?section=settings
-
-is mapped to:
-
-    www/dashboard/data/data.json
-
-The server derives the target site from the request path.
-
-The client must not be allowed to provide an arbitrary filesystem path or persistence location.
-
-This prevents filesystem path manipulation and accidental mixing of persistence data between applications.
-
-### Security Scope
-
-Application separation is not an authentication or authorization boundary.
-
-Applications hosted by one Mini Server instance normally share the same HTTP origin:
+Applications served by one Mini Server instance share the same HTTP origin:
 
     http://127.0.0.1:<port>
 
-Different path prefixes therefore do not make the applications mutually isolated security principals.
+Deliberately written code from one application can address another valid application's API namespace. It can also choose either documented persistence scope. Applications hosted together must therefore be treated as part of the same trusted local environment.
 
-For example, JavaScript running from:
-
-    /example/
-
-could deliberately send a request to:
-
-    /dashboard/api/readAll
-
-The server would process that request within the `dashboard` namespace because the requested URL explicitly targets that namespace.
-
-Mini Server v1.0 does not provide authentication or authorization between hosted applications.
-
-Applications hosted together by one Mini Server instance must therefore be treated as part of the same trusted local environment.
-
-The isolation model guarantees:
-
-- predictable per-application persistence locations;
-- URL-derived site scoping;
-- prevention of arbitrary client-supplied persistence filesystem paths;
-- separation of normal application data during intended MiniApi usage.
-
-It does not guarantee protection against deliberately written code that explicitly calls another application's API namespace.
+The private scope remains user-specific storage, not a hostile-application security boundary.
 
 ## Shared JavaScript Client Library
 
-A shared browser-side JavaScript library named:
+The shared browser library is:
 
-```text
-mini-api.js
-```
+    www\_shared\mini-api.js
 
-is maintained centrally.
+Applications include it with:
 
-It is intended to be served from:
+    <script src="/_shared/mini-api.js"></script>
 
-```text
-www/_shared/mini-api.js
-```
+The public v1 API is operation-first and requires a terminal scope selector:
 
-Applications can include the shared library using a URL such as:
+    MiniApi.read(section).private()
+    MiniApi.read(section).shared()
+    MiniApi.readAll().private()
+    MiniApi.readAll().shared()
+    MiniApi.write(data).private()
+    MiniApi.write(data).shared()
+    MiniApi.remove(section).private()
+    MiniApi.remove(section).shared()
+    MiniApi.clear().private()
+    MiniApi.clear().shared()
 
-```html
-<script src="/_shared/mini-api.js"></script>
-```
+The terminal `.private()` or `.shared()` executes the asynchronous operation and returns a Promise.
 
-The library provides the browser-facing API:
+Scope-first calls such as `MiniApi.private().read(...)` are invalid. The obsolete names `readSection` and `removeSection` are not part of the v1 API.
 
-    MiniApi.readSection(section)
-    MiniApi.readAll()
-    MiniApi.write(data)
-    MiniApi.removeSection(section)
-    MiniApi.clear()
+`mini-api.js` derives the current site from the browser URL, adds the explicitly selected scope, and targets:
 
-These names define the public MiniApi interface for the initial release.
+    /<site>/api/<scope>/<operation>
 
-Application code should normally use this shared interface rather than constructing persistence API requests directly.
+It handles JSON serialization/deserialization and generic validation. Applications normally work with native JavaScript values without calling `JSON.stringify()` or `JSON.parse()`.
 
-The JavaScript library works with native JavaScript objects and arrays.
+## Example Application and Template
 
-Application developers should not need to call:
+The distribution contains the maintained example application:
 
-    JSON.stringify()
-    JSON.parse()
+    www\example\
 
-for normal API use.
-
-Serialization and deserialization are handled internally by `mini-api.js`.
-
-The library also performs basic validation before sending data to the server.
-
-## Site Detection
-
-The shared JavaScript library should determine the current site from the browser URL.
-
-For example, when running from:
-
-```text
-http://127.0.0.1:<port>/example/index.html
-```
-
-the library determines:
-
-```text
-site = example
-```
-
-and sends API requests below:
-
-```text
-/example/api/
-```
-
-The site should not normally need to be configured manually by application code.
-
-## Example Application and Template Package
-
-The distributed web root contains a maintained example application:
-
-    www/example/
-
-The example application serves as the working reference implementation and demonstrates the public MiniApi interface.
-
-It may evolve together with Mini Server as functionality is added or refined.
-
-A reusable starter template is distributed separately as:
+and the reusable template archive:
 
     miniweb-template.zip
 
-The template archive is stored outside the `www` web root.
+The template archive is outside the web root. Developers extract it into a new first-level application directory.
 
-A permanent:
-
-    www/template/
-
-directory is not required in the normal Mini Server distribution.
-
-Developers create a new application by extracting or copying the template into a new first-level directory below `www/`.
-
-For example:
-
-    www/my-app/
-
-The extracted application then receives its own persistence location:
-
-    www/my-app/data/data.json
-
-and uses the shared browser-side API library from:
-
-    www/_shared/mini-api.js
-
-The template remains intentionally small and application-neutral.
-
-It demonstrates the public MiniApi operations and includes a minimal visible:
-
-    Hello Mini Webserver
-
-example.
-
-The template is intended to remain a clean starting point, while the `example` application is the maintained and potentially evolving demonstration.
+The example and template demonstrate the public MiniApi interface and make their selected persistence scope explicit. The template remains application-neutral and includes the visible `Hello Mini Webserver` demonstration loaded from a selected persistence scope.
 
 ## Network Boundary
 
-Mini Server binds its HTTP server exclusively to:
+Each running server binds exclusively to:
 
     127.0.0.1
 
-A newly started server requests TCP port:
+and requests TCP port:
 
     0
 
-The operating system selects an available local port.
+The operating system selects an available local port. Mini Server reads the actual assigned port from the active server socket. It does not use a fixed port, scan a port range, or bind to external interfaces.
 
-Mini Server does not scan for free ports and does not use a permanently configured server port.
-
-The server is intended as a local per-user service and is not designed as a public internet-facing web server.
+The loopback server is local even when its installation and shared persistence are on a network drive.
 
 ## Startup and Browser Launch
 
-Only one Mini Server server process may run for one installation at a time.
+Mini Server permits one running server instance per local user/computer context. Different computers do not block each other merely because they use the same installation.
 
-Independent Mini Server installations may run simultaneously.
+### First Local Start
 
-### Instance State
+A startup attempt:
 
-Each installation maintains runtime state outside the web root.
+1. Obtains local `startup.lock` using a bounded wait.
+2. Evaluates the local process-owned `instance.lock`.
+3. If no active instance owns it, invalidates stale `instance.json` state.
+4. Obtains and retains `instance.lock`.
+5. Binds the HTTP server to `127.0.0.1` using port `0`.
+6. Reads the operating-system-assigned port and confirms readiness.
+7. Publishes the port in local `instance.json`.
+8. Opens Microsoft Edge with the configured start target.
+9. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
 
-The intended location is:
+### Repeated Local Start
 
-    <installation-root>/.runtime/
+If `instance.lock` is owned by the active local server, the repeated start does not start another server. It obtains valid local `instance.json` state, reuses the active local port, opens the existing URL in Edge, and exits.
 
-For example:
+If an active lock exists but valid state cannot be obtained within the bounded startup procedure, the repeated start fails clearly instead of starting a competing process.
 
-    <installation-root>/.runtime/instance.lock
-    <installation-root>/.runtime/instance.json
+A state file alone is never proof that an instance is active. Stale state does not prevent a later start when no process owns `instance.lock`.
 
-The exclusive instance lock determines whether the installation already has a running Mini Server process.
+### Shared Installation Concurrency
 
-The runtime state contains at least the TCP port assigned to the active server after successful startup.
+User A on Computer A and User B on Computer B may run the same shared installation at the same time. Each process has its own local loopback port and local runtime locks/state.
 
-Runtime state must never be stored below `www/` or served as normal web content.
-
-A state file by itself is not proof that a server is still running.
-
-### First Start
-
-When no server instance currently owns the installation lock:
-
-1. Mini Server acquires the exclusive installation lock.
-2. Stale runtime state is invalidated.
-3. The HTTP server binds to `127.0.0.1` and requests port `0`.
-4. The operating system assigns an available local TCP port.
-5. Mini Server obtains the actual assigned port.
-6. The current port is published in the runtime state.
-7. The server is considered ready.
-8. Microsoft Edge is opened with the assigned port and configured application start target.
-9. The Java process remains running as the active Mini Server instance.
-
-For example:
-
-    http://127.0.0.1:51847/example/
-
-Edge must not be opened using a guessed or predetermined port.
-
-### Repeated Start
-
-If the same installation is started again while its Mini Server process is already running, the second process does not start another HTTP server.
-
-Instead it:
-
-1. Detects that the installation lock is already owned.
-2. Reads the runtime state of the active instance.
-3. Obtains the existing server port.
-4. Opens Microsoft Edge using the existing Mini Server URL.
-5. Terminates.
-
-A repeated start therefore reuses the active server instance instead of creating another process that could compete for the same persistence files.
-
-### Startup Race
-
-A repeated start may occur after the first process has acquired the installation lock but before it has published valid runtime state.
-
-During this startup phase, the second process must not start another server.
-
-It may wait for valid runtime state for a short bounded period.
-
-If the active lock remains owned but valid state cannot be obtained, the repeated start fails with a diagnostic message instead of creating a competing server instance.
-
-### Stale Runtime State
-
-Runtime state may remain after an abnormal process termination.
-
-If no process owns the installation lock, a new Mini Server process may start normally.
-
-After acquiring the lock, the new process invalidates stale state and publishes its own state only after successful server startup.
-
-An old stored port is never reused solely because it remains in a runtime state file.
+Cross-computer persistence safety is provided by the short-lived persistence file locks, not by runtime single-instance locking.
 
 ### Server Lifetime
 
-The Mini Server Java process runs independently of Microsoft Edge.
+The Java server runs independently of Microsoft Edge. Closing browser tabs or windows does not intentionally stop it.
 
-Closing a Mini Server tab, an Edge window, or all Edge windows does not intentionally stop the server.
+The process remains active until it terminates. The operating system then releases its process-owned `instance.lock`. Mini Server v1 exposes no browser-accessible HTTP shutdown endpoint.
 
-The server continues running until its Java process terminates, for example because of:
-
-- User logoff
-- Operating-system shutdown
-- Explicit process termination
-- Fatal process failure
-
-Mini Server v1.0 does not provide a browser-accessible HTTP shutdown endpoint.
-
-### Persistence Concurrency
-
-The per-installation single-instance rule prevents separate Mini Server processes from concurrently modifying the same installation's persistence files.
-
-Concurrency between requests handled inside the active server process must still be managed by the persistence implementation itself.
-
-Detailed startup and lifetime behavior is defined by D-018 and REQ-006.
+Detailed startup behavior is defined by D-020 and REQ-006.
 
 ## Architectural Principles
 
-The implementation should preserve the following principles:
-
 - Keep the server small and understandable.
 - Keep application-specific logic out of the server.
-- Centralize shared API behavior.
-- Centralize the browser-side API library.
-- Keep each application's persistent data isolated.
-- Avoid unnecessary external frameworks and dependencies.
-- Do not expose arbitrary filesystem access through the API.
-- Prefer clear path-based scoping over client-supplied storage locations.
-- Keep the architecture suitable for multiple independent applications below one `www` root.
+- Support shared/network installations without shared machine/process runtime state.
+- Keep every HTTP listener loopback-only and dynamically allocated.
+- Require explicit shared or private persistence scope for every operation.
+- Derive controlled persistence locations on the server.
+- Keep private user storage distinct from a security boundary.
+- Separate runtime coordination locks from persistence write locks.
+- Use bounded locking and atomic persistence writes.
+- Avoid unnecessary frameworks, services, and persistent logging infrastructure.
 
 ## Related Documents
 
-See:
-
-- `docs/DECISIONS.md` for approved technical decisions and constraints
-- `requirements/` for functional and non-functional requirements
-- `docs/PROJECT_NOTES.md` for working knowledge and observations
-- `docs/DEBUGGING.md` for known problems and verified fixes
+- `docs/DECISIONS.md` records approved decisions and superseded historical decisions.
+- `requirements/` contains binding functional and non-functional requirements.
+- `docs/PROJECT_NOTES.md` contains working knowledge and observations.
+- `docs/DEBUGGING.md` contains known problems and verified fixes.

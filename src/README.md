@@ -33,7 +33,7 @@ The exact subpackage and class structure may be designed during implementation, 
 Production source code is responsible for Mini Server runtime behavior such as:
 
 - Application startup
-- Per-installation instance locking
+- Local per-user/computer instance locking
 - Runtime state handling
 - HTTP server initialization
 - Dynamic loopback port allocation
@@ -132,9 +132,15 @@ The distributed template artifact is:
 
 ## Persistence
 
-Application persistence remains below the corresponding hosted application directory:
+Shared application persistence remains below the corresponding hosted application directory:
 
-    www/<site>/data/data.json
+    <installation-root>\www\<site>\data\data.json
+
+Private persistence is stored below:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
+Every operation explicitly selects one of these scopes.
 
 Java source code must derive and control persistence locations according to the active requirements.
 
@@ -144,16 +150,17 @@ Persistence data below an application's `data/` directory must not be exposed th
 
 ## Runtime State
 
-Per-installation runtime state belongs outside the web root.
+Per-user/computer runtime state belongs outside the installation and web root.
 
 The intended runtime location is:
 
-    .runtime/
+    %LOCALAPPDATA%\MiniServer\runtime\
 
 Runtime state includes information such as:
 
-    .runtime/instance.lock
-    .runtime/instance.json
+    startup.lock
+    instance.lock
+    instance.json
 
 Runtime state is created and managed by the running Mini Server implementation.
 
@@ -173,9 +180,12 @@ Source code should:
 - Handle failures explicitly
 - Preserve loopback-only server binding
 - Preserve operating-system-assigned dynamic port allocation
-- Preserve the per-installation single-instance guarantee
+- Preserve the local per-user/computer single-instance guarantee
+- Support concurrent use of a shared installation from different computers
 - Preserve URL-derived application scoping
 - Preserve controlled persistence path mapping
+- Preserve mandatory explicit shared/private scope selection
+- Keep runtime locks separate from persistence write locks
 - Avoid exposing arbitrary filesystem access
 - Remain consistent with active requirements and approved architectural decisions
 

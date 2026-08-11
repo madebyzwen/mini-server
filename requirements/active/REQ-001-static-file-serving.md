@@ -72,13 +72,13 @@ www/
 
 The client must not be able to supply an arbitrary filesystem path.
 
-## Reserved Persistence Directory
+## Reserved Shared Persistence Directory
 
 The directory:
 
-www/<site>/data/
+<installation-root>\www\<site>\data\
 
-is reserved for Mini Server persistence.
+is reserved for shared Mini Server persistence.
 
 Files below this directory must not be served through the normal static file handler.
 
@@ -88,9 +88,15 @@ In particular, a request such as:
 
 must not return the contents of:
 
-www/example/data/data.json
+<installation-root>\www\example\data\data.json
 
-Persistent application data must be accessed through the site's JSON persistence API.
+Shared persistent application data must be accessed through the site's explicitly scoped JSON persistence API.
+
+Private persistence is stored outside the web root at:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
+and must likewise never be exposed through normal static file serving.
 
 The reserved persistence rule applies specifically to the `data` directory directly below an application directory.
 
@@ -175,7 +181,7 @@ REQ-001 is fulfilled when all of the following are true:
 - Static JSON resources outside the reserved persistence directory can be served normally.
 - Files below www/<site>/data/ are not served by the static file handler.
 - A request for /<site>/data/data.json does not expose the site's persistence data.
-- Persistent application data is accessed through the site's JSON API rather than through direct static file access.
+- Shared and private persistent application data is accessed through the site's explicitly scoped JSON API rather than through direct static file access.
 - Missing files return an appropriate HTTP error response.
 - Directory listings are not exposed automatically.
 - Path traversal outside www/ is prevented.
@@ -195,6 +201,8 @@ The implementation must remain compatible with the project's approved Java runti
 - D-001 — Java 8 Compatibility
 - D-014 — Not Intended for Public Internet Use
 - D-015 — Persistence Data Is Not Served as Static Content
+- D-021 — Explicit Shared and Private Persistence Scopes
+- D-022 — Explicitly Scoped Persistence API Contract
 
 ## Related Architecture
 
@@ -204,10 +212,10 @@ docs/ARCHITECTURE.md
 
 Relevant sections include:
 
-- Runtime Structure
+- Storage and Runtime Boundaries
 - Web Application Model
 - Static File Serving
-- Application Isolation
+- Application and Scope Isolation
 
 ## Related Tasks
 

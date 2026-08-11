@@ -70,9 +70,15 @@ library rather than implementing its own HTTP or JSON transport layer.
 
 The example application may be modified and extended as Mini Server evolves.
 
-Its persistence data is stored separately at:
+Its bundled shared persistence data is stored at:
 
-    www/example/data/data.json
+    <installation-root>\www\example\data\data.json
+
+The example must also demonstrate private persistence at:
+
+    %APPDATA%\MiniServerData\example\data\data.json
+
+and clearly label which scope each operation uses.
 
 ## Template Package
 
@@ -112,7 +118,7 @@ The visible example must include:
 
 The displayed value must be obtained from the persistence data of the application created from the template through:
 
-    MiniApi.readSection("start")
+    MiniApi.read("start").shared()
 
 rather than being used only as hard-coded page text.
 
@@ -126,11 +132,18 @@ The exact visual appearance is not part of this requirement.
 
 Both the maintained example application and the reusable template must demonstrate the public MiniApi interface:
 
-    MiniApi.readSection(section)
-    MiniApi.readAll()
-    MiniApi.write(data)
-    MiniApi.removeSection(section)
-    MiniApi.clear()
+    MiniApi.read(section).private()
+    MiniApi.read(section).shared()
+    MiniApi.readAll().private()
+    MiniApi.readAll().shared()
+    MiniApi.write(data).private()
+    MiniApi.write(data).shared()
+    MiniApi.remove(section).private()
+    MiniApi.remove(section).shared()
+    MiniApi.clear().private()
+    MiniApi.clear().shared()
+
+Every demonstrated persistence operation must select a scope explicitly and must use operation-first chaining.
 
 Application code must work with native JavaScript objects and arrays.
 
@@ -138,15 +151,23 @@ The demonstration must not require manual `JSON.stringify()` or `JSON.parse()` c
 
 ## Persistence Scoping
 
-The example application uses:
+The example application's shared scope uses:
 
-    www/example/data/data.json
+    <installation-root>\www\example\data\data.json
 
-A new application created from the template receives its own persistence file below its own site directory.
+Its private scope uses:
+
+    %APPDATA%\MiniServerData\example\data\data.json
+
+A new application created from the template can use both corresponding locations.
 
 For example:
 
-    www/my-app/data/data.json
+    <installation-root>\www\my-app\data\data.json
+
+and:
+
+    %APPDATA%\MiniServerData\my-app\data\data.json
 
 During normal MiniApi usage, requests are automatically scoped to the site namespace of the current application.
 
@@ -156,7 +177,7 @@ For example, MiniApi calls made from:
 
 normally target:
 
-    /example/api/
+    /example/api/<scope>/
 
 while MiniApi calls made from:
 
@@ -164,9 +185,9 @@ while MiniApi calls made from:
 
 normally target:
 
-    /my-app/api/
+    /my-app/api/<scope>/
 
-Different application directories must not accidentally share the same persistence file.
+Different application directories or persistence scopes must not accidentally share the same persistence file.
 
 This separation is based on URL namespaces and controlled persistence path mapping.
 
@@ -181,14 +202,15 @@ The example application and template content must provide enough information for
 At minimum, developers must be able to determine:
 
 - How to include `mini-api.js`
-- How to read one section with `MiniApi.readSection(section)`
-- How to read all data with `MiniApi.readAll()`
-- How to write data with `MiniApi.write(data)`
-- How to remove one section with `MiniApi.removeSection(section)`
-- How to clear data with `MiniApi.clear()`
+- How to read one Section with `MiniApi.read(section).private()` or `.shared()`
+- How to read all data with `MiniApi.readAll().private()` or `.shared()`
+- How to write data with `MiniApi.write(data).private()` or `.shared()`
+- How to remove one Section with `MiniApi.remove(section).private()` or `.shared()`
+- How to clear data with `MiniApi.clear().private()` or `.shared()`
+- That every operation requires an explicit persistence scope and that operation-first chain order is mandatory
 - That native JavaScript objects and arrays can be used directly
 - That MiniApi automatically scopes normal requests to the current application
-- That each application has its own persistence file
+- That each application has separate shared and private persistence files
 - That persistence files are accessed through the JSON API rather than through direct static file access
 
 ## Independence from Server Implementation
@@ -205,25 +227,21 @@ REQ-005 is fulfilled when all of the following are true:
 
 - `www/example/` exists.
 - The example application contains a working `index.html`.
-- The example application has its own `data/data.json`.
+- The example application has its own shared `data/data.json` and can use its private user-profile persistence file.
 - The example application uses the shared `www/_shared/mini-api.js` library.
-- The example application demonstrates `MiniApi.readSection(section)`.
-- The example application demonstrates `MiniApi.readAll()`.
-- The example application demonstrates `MiniApi.write(data)`.
-- The example application demonstrates `MiniApi.removeSection(section)`.
-- The example application demonstrates `MiniApi.clear()`.
+- The example application demonstrates read, readAll, write, remove, and clear with explicit private and shared scope selectors.
 - `miniweb-template.zip` is included in the distribution.
 - The template archive is stored outside the `www` web root.
 - A permanent `www/template/` application is not required.
 - The template can be extracted or copied into a new first-level application directory below `www/`.
 - An application created from the template uses the shared `mini-api.js` library.
-- An application created from the template receives its own `data/data.json` persistence file.
+- An application created from the template receives its own shared `data/data.json` and can use its private user-profile persistence file.
 - The template contains a visible `Hello Mini Webserver` demonstration.
-- The displayed `Hello Mini Webserver` value is obtained through `MiniApi.readSection("start")`.
+- The displayed `Hello Mini Webserver` value is obtained through `MiniApi.read("start").shared()`.
 - The template clearly indicates that its demonstration content may be replaced by the developer.
 - Application code works with native JavaScript objects and arrays.
 - Manual `JSON.stringify()` and `JSON.parse()` are not required for normal MiniApi usage.
-- Normal MiniApi usage is automatically scoped to the current application's API namespace and persistence file.
+- Normal MiniApi usage derives the current application's namespace and explicitly selects its private or shared persistence file.
 - A developer can create another application from the template without application-specific Java server changes.
 - The included documentation explains basic MiniApi usage.
 
@@ -242,7 +260,6 @@ The template archive must not be placed inside the served `www` web root.
 ## Related Decisions
 
 - D-006 — Generic Server-Side Data Handling
-- D-007 — One JSON Data File per Application
 - D-008 — Application Scope Is Derived from the URL
 - D-009 — Shared Central API Implementation
 - D-010 — Shared JavaScript API Library
@@ -251,6 +268,8 @@ The template archive must not be placed inside the served `www` web root.
 - D-013 — English Repository Language
 - D-015 — Persistence Data Is Not Served as Static Content
 - D-016 — Application Separation Is Namespace Isolation, Not Authentication
+- D-021 — Explicit Shared and Private Persistence Scopes
+- D-022 — Explicitly Scoped Persistence API Contract
 
 ## Related Architecture
 
@@ -262,8 +281,8 @@ Relevant sections include:
 
 - Web Application Model
 - Shared JavaScript Client Library
-- Example Application and Template Package
-- Application Isolation
+- Example Application and Template
+- Application and Scope Isolation
 
 ## Related Tasks
 

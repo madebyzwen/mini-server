@@ -51,7 +51,7 @@ Avoid unnecessary frameworks and dependencies where native platform functionalit
 
 The server should remain generic and should not interpret application-specific JSON data.
 
-Individual web applications should remain isolated from each other's persistent data.
+Persistence should remain predictably scoped by application and explicit shared/private selection. This prevents accidental mixing but is not authentication or authorization between hosted applications.
 
 Project documentation should distinguish clearly between:
 

@@ -10,7 +10,9 @@ The project is currently in early development.
 
 The initial goal is to provide a minimal local web server that can host multiple independent small web applications from a shared `www` root directory.
 
-Each application is stored in its own subdirectory and can use the server's central JSON API for reading and writing its own data.
+The distribution may reside on a shared/network drive and may be used from different computers concurrently. Each computer runs its own loopback-only server and keeps runtime coordination state in the current user's local profile.
+
+Each application is stored in its own subdirectory and can use the central JSON API with an explicit shared or private persistence scope.
 
 ## Core Concept
 
@@ -21,8 +23,8 @@ The server provides:
 - Static file serving
 - A central server-side JSON API
 - A shared JavaScript client library for using the API
-- Separate JSON data storage for each web application
-- Isolation between individual web applications
+- Shared and private JSON data storage for each web application
+- Controlled application and persistence-scope mapping
 
 Example structure:
 
@@ -39,16 +41,29 @@ www/
     └── ...
 ```
 
-A request such as:
+A shared-scope request such as:
 
 ```text
-/example/api/read?section=settings
+/example/api/shared/read?section=settings
 ```
 
 is handled by the server's central API implementation and is automatically scoped to:
 
 ```text
-www/example/data/data.json
+<installation-root>\www\example\data\data.json
+```
+
+A private request uses `/example/api/private/...` and maps to:
+
+```text
+%APPDATA%\MiniServerData\example\data\data.json
+```
+
+Browser code selects the scope explicitly after the operation, for example:
+
+```javascript
+MiniApi.read("settings").private()
+MiniApi.read("settings").shared()
 ```
 
 The web application itself does not implement its own server-side API.

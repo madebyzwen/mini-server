@@ -22,7 +22,7 @@ The implementation should provide enough information for users and developers to
 
 ## Description
 
-Mini Server operates with local files below the configured web root.
+Mini Server reads installation files and writes both shared-installation and private user-profile persistence files.
 
 The server must therefore handle common failure conditions such as:
 
@@ -49,11 +49,15 @@ The server must not report unreadable content as successfully returned.
 
 ## Write Permissions
 
-Write operations require sufficient filesystem permissions for the corresponding application's data location.
+Write operations require sufficient filesystem permissions for the selected application's persistence scope.
 
-For example:
+For shared scope:
 
-www/example/data/data.json
+    <installation-root>\www\example\data\data.json
+
+For private scope:
+
+    %APPDATA%\MiniServerData\example\data\data.json
 
 must be writable when the application performs a persistence operation that modifies data.
 
@@ -65,15 +69,19 @@ The existing data file must not be intentionally replaced with incomplete or inv
 
 A missing data file is not necessarily an error.
 
-When a write operation requires a site's data file and the file does not yet exist, Mini Server may create:
+When a write operation requires a site's selected data file and the file does not yet exist, Mini Server may create either:
 
-www/<site>/data/data.json
+    <installation-root>\www\<site>\data\data.json
+
+or:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
 
 when the required directory is valid and writable.
 
-If the required data directory does not exist, the implementation may create it when this can be done safely within the current site's directory.
+If the required data directory does not exist, the implementation may create it when this can be done safely within the selected server-derived shared or private location.
 
-The server must never create the data file outside the current site's permitted location.
+The server must never create the data file outside the current site's server-derived shared or private location.
 
 ## Invalid JSON Data
 
@@ -98,6 +106,7 @@ Examples include:
 - Invalid JSON request bodies
 - Unsupported operations
 - Invalid application scope
+- Missing or unknown persistence scope
 - Requests that attempt to escape or override the persistence location derived from the requested site namespace
 - Attempts to access arbitrary filesystem paths
 
@@ -129,13 +138,23 @@ C:\Users\...
 /home/...
 /volume2/...
 
-Internal diagnostic logging may contain additional technical detail when appropriate, but browser-facing messages should remain limited to information needed to understand the failure.
+Transient internal diagnostics may contain additional technical detail when appropriate, but browser-facing messages should remain limited to information needed to understand the failure.
 
-## Data Integrity
+## Write Locking and Data Integrity
+
+write, remove, and clear must obtain a short-lived exclusive file lock associated with the selected target persistence file.
+
+Lock acquisition must use a bounded timeout. Failure to obtain the lock must fail the operation cleanly with the simple external error:
+
+    Write failed
+
+The persistence file lock is separate from startup.lock and instance.lock in the local runtime directory.
 
 A failed write operation must not intentionally leave the site's JSON data in a partially written state.
 
-Where practical, the implementation should write updates in a way that minimizes the risk of corrupting a previously valid data file.
+Writes must use atomic replacement so readers see the previous complete file or the new complete file, never a partial file.
+
+Reads do not acquire a separate read lock.
 
 The server must only report a write operation as successful after the intended data has been stored successfully.
 
@@ -147,13 +166,13 @@ Write-related API operations must return a clear error when the required write p
 
 The server must not require write access to unrelated application directories.
 
-## Logging
+## Diagnostics
 
 The server should provide useful diagnostic information for failures during development and operation.
 
-Logging should be concise and should not expose application data unnecessarily.
+Diagnostics should be concise and should not expose application data unnecessarily.
 
-Normal operation should not require detailed logging of application content.
+Normal operation must not require persistent operational logging or detailed logging of application content.
 
 ## Startup Errors
 
@@ -174,19 +193,22 @@ REQ-007 is fulfilled when all of the following are true:
 - Missing static files return an appropriate error.
 - Unreadable files do not produce a successful response.
 - Write operations fail clearly when filesystem permissions are insufficient.
+- Write operations fail with `Write failed` when their bounded exclusive file lock cannot be obtained.
 - Failed write operations are not reported as successful.
 - A missing data file can be created when the correct site directory is writable.
-- Data files are never created outside the permitted site directory.
+- Data files are never created outside the permitted server-derived shared or private site location.
 - Invalid JSON in an existing data file is detected.
 - Invalid JSON is not silently treated as valid application data.
 - Malformed API requests return an error.
 - Attempts to escape the permitted site or web root are rejected.
 - Browser-facing errors do not expose unnecessary absolute filesystem paths.
-- A failed write does not intentionally leave partially written JSON data.
+- Modifying operations use atomic writes and do not expose partially written JSON data.
+- Reads do not acquire a separate read lock.
+- Runtime instance locking and persistence-file locking remain separate.
 - Read-only filesystem access does not prevent unrelated static or read-only functionality where technically possible.
 - Startup failures prevent automatic browser launch.
-- Diagnostic logging provides enough information to investigate failures.
-- Normal operation does not require detailed logging of application content.
+- Diagnostics provide enough information to investigate failures.
+- Normal operation does not require persistent operational logging or detailed logging of application content.
 
 ## Constraints
 
@@ -203,9 +225,11 @@ Application-level convenience features must not be described as security mechani
 - D-001 — Java 8 Compatibility
 - D-005 — No Database
 - D-006 — Generic Server-Side Data Handling
-- D-007 — One JSON Data File per Application
 - D-008 — Application Scope Is Derived from the URL
 - D-014 — Not Intended for Public Internet Use
+- D-021 — Explicit Shared and Private Persistence Scopes
+- D-022 — Explicitly Scoped Persistence API Contract
+- D-023 — Concurrency-Safe Persistence Writes
 
 ## Related Requirements
 
@@ -222,9 +246,9 @@ docs/ARCHITECTURE.md
 Relevant sections include:
 
 - Static File Serving
-- Central API
-- Data Model
-- Application Isolation
+- Central Persistence API
+- Persistence Data Model
+- Application and Scope Isolation
 - Network Boundary
 
 ## Related Tasks

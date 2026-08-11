@@ -125,7 +125,7 @@ A database would introduce unnecessary complexity, dependencies, installation re
 
 ### Consequences
 
-- Each application stores its persistent data in its own JSON file.
+- Each valid application and explicit persistence scope maps to its own JSON file as defined by D-021.
 - The server provides file-based JSON persistence through the central API.
 - Database drivers, servers, migrations, and schemas are outside the project scope.
 
@@ -140,6 +140,7 @@ The server must not interpret application-specific data.
 The server understands only the technical structure required for persistence, such as:
 
 - Site
+- Persistence scope
 - Section
 - JSON data
 - API operation
@@ -157,6 +158,12 @@ The server should remain reusable for different small web applications without r
 ---
 
 ## D-007 — One JSON Data File per Application
+
+Status: Superseded
+
+Superseded by: D-021 — Explicit Shared and Private Persistence Scopes
+
+This decision described the original single-location persistence model. It is preserved as historical context and no longer defines the v1 target architecture.
 
 ### Decision
 
@@ -200,7 +207,7 @@ A deliberately written client may explicitly address another valid application's
 
 ### Decision
 
-The server determines the application scope from the first relevant path component of the request URL.
+The server determines the application site from the first relevant path component of the request URL and the persistence scope from the explicit scope component of the API URL.
 
 The client does not provide a filesystem path or arbitrary storage location.
 
@@ -215,16 +222,18 @@ Allowing clients to submit filesystem paths would create unnecessary complexity 
 For example:
 
 ```text
-/example/api/read?section=settings
+/example/api/private/read?section=settings
 ```
 
-is scoped to:
+is scoped to the `example` site's private persistence file, while:
 
 ```text
-www/example/data/data.json
+/example/api/shared/read?section=settings
 ```
 
-The site name is determined by the request path.
+is scoped to the `example` site's shared persistence file.
+
+The site name and persistence scope are determined by the request path. The server maps those values to the approved filesystem locations defined by D-021.
 
 ---
 
@@ -247,9 +256,9 @@ The same API operations are available within each application's URL namespace.
 Examples:
 
 ```text
-/example/api/read
-/notes/api/read
-/dashboard/api/read
+/example/api/private/read
+/notes/api/shared/read
+/dashboard/api/private/read
 ```
 
 All are handled by the same server-side implementation.
@@ -284,15 +293,13 @@ Applications may include it with:
 
     <script src="/_shared/mini-api.js"></script>
 
-The library exposes the following public browser-side API:
+The library exposes the operation-first, explicitly scoped public browser-side API defined by D-022. Examples include:
 
-    MiniApi.readSection(section)
-    MiniApi.readAll()
-    MiniApi.write(data)
-    MiniApi.removeSection(section)
-    MiniApi.clear()
-
-These method names form the intended public MiniApi interface for the initial release.
+    MiniApi.read(section).private()
+    MiniApi.readAll().shared()
+    MiniApi.write(data).private()
+    MiniApi.remove(section).shared()
+    MiniApi.clear().private()
 
 Application code should use this public interface rather than constructing persistence API requests directly during normal use.
 
@@ -375,7 +382,7 @@ Keeping the archive outside `www/` also prevents the template package itself fro
 - Developers create a new application by extracting or copying the template into a new first-level directory below `www/`.
 - The extracted template must work without application-specific changes to the Java server.
 - The template uses the shared `www/_shared/mini-api.js` library.
-- The template demonstrates the public MiniApi interface.
+- The template demonstrates the public MiniApi interface with explicit shared or private persistence scope selection.
 - The template contains a minimal visible `Hello Mini Webserver` example.
 - The template remains application-neutral and contains no application-specific business logic.
 
@@ -448,17 +455,19 @@ www/example/data/data.json
 
 Persistent application data may only be accessed through the site's JSON API.
 
+This path is the shared persistence location defined by D-021. Private persistence is stored outside the web root and is therefore not eligible for normal static serving.
+
 The `data` directory directly below an application directory is therefore reserved for Mini Server persistence and is not part of the application's publicly served static content.
 
 ### Rationale
 
-The persistence file is located below the `www` directory to keep each web application portable as a self-contained directory.
+The shared persistence file is located below the `www` directory to keep each web application and its shared data portable as a self-contained directory.
 
 However, allowing the static file handler to expose that persistence file would bypass the JSON API completely.
 
 API behavior such as section-based access, validation, error handling, and controlled persistence would become ineffective if clients could read the complete data file directly through a static URL.
 
-Keeping the persistence directory below the application directory while excluding it from static file serving preserves both portability and the intended API boundary.
+Keeping the shared persistence directory below the application directory while excluding it from static file serving preserves both portability and the intended API boundary.
 
 ### Consequences
 
@@ -475,21 +484,27 @@ Keeping the persistence directory below the application directory while excludin
 
 ### Decision
 
-Mini Server separates application persistence by URL namespace and filesystem location.
+Mini Server separates application persistence by URL namespace, explicit persistence scope, and controlled filesystem location.
 
-Each application has its own persistence location:
+Each application has a shared persistence location:
 
     www/<site>/data/data.json
 
+and a private persistence location:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
 and its own API namespace:
 
-    /<site>/api/
+    /<site>/api/<scope>/
 
 The server derives the target site from the request URL and does not allow the client to provide an arbitrary persistence filesystem path.
 
-This separation is intended to prevent accidental cross-site persistence access and filesystem path manipulation.
+This separation is intended to prevent accidental cross-site or cross-scope persistence access and filesystem path manipulation.
 
 It is not an authentication or authorization boundary between hosted applications.
+
+The term `private` means user-profile persistence rather than shared-installation persistence. It does not add authentication, authorization, cryptographic protection, or isolation between mutually hostile applications.
 
 ### Rationale
 
@@ -505,7 +520,7 @@ For example, JavaScript loaded from:
 
 could deliberately send a request to:
 
-    /dashboard/api/readAll
+    /dashboard/api/private/readAll
 
 The server would process that request within the `dashboard` namespace because the requested URL explicitly targets that namespace.
 
@@ -513,10 +528,10 @@ Preventing such deliberate interaction would require an authentication or author
 
 ### Consequences
 
-- Each API request may access only the persistence location derived from that request's site namespace.
+- Each API request may access only the persistence location derived from that request's site namespace and explicit scope.
 - Clients cannot provide arbitrary filesystem paths to select another persistence file.
-- `MiniApi` automatically uses the current application's site namespace for normal application code.
-- Separate application directories and persistence files prevent accidental mixing of application data.
+- `MiniApi` automatically uses the current application's site namespace and requires application code to select `private` or `shared` explicitly.
+- Separate application/scope persistence files prevent accidental mixing of application data.
 - Hosted applications must not be treated as mutually untrusted security principals.
 - A deliberately written application can request another application's API namespace.
 - Mini Server v1.0 does not provide authentication or authorization between hosted applications.
@@ -526,6 +541,12 @@ Preventing such deliberate interaction would require an authentication or author
 ---
 
 ## D-017 — HTTP and JSON API Contract
+
+Status: Superseded
+
+Superseded by: D-022 — Explicitly Scoped Persistence API Contract
+
+This decision records the original unscoped HTTP contract and browser-side method names. It is preserved as historical context and no longer defines the v1 target API.
 
 ### Decision
 
@@ -865,6 +886,12 @@ A consistent JSON error structure gives MiniApi and application developers a pre
 ---
 
 ## D-018 — Single Running Instance and Server Lifetime
+
+Status: Superseded
+
+Superseded by: D-020 — Local Per-User/Computer Runtime Instance
+
+This decision is preserved as historical context. It was superseded because the deployment model now permits one shared or network installation to be used concurrently from different computers, which makes installation-scoped runtime coordination invalid.
 
 ### Decision
 
@@ -1255,6 +1282,178 @@ Maintaining reusable template source outside `www/` preserves the distinction be
 - The Maven build must enforce the approved Java 8 target.
 - Exact dependency versions, Maven plugin versions, test framework versions, executable-JAR packaging details, and the concrete initial `pom.xml` configuration are deferred until implementation preparation.
 - Codex may implement the build configuration later, but it must follow this decision and the active requirements.
+
+---
+
+## D-020 — Local Per-User/Computer Runtime Instance
+
+### Decision
+
+Mini Server supports distributions located on shared or network drives. Multiple users on different computers may start the same physical installation concurrently.
+
+The running HTTP server remains local to the current computer. Single-instance coordination is therefore scoped to one local user/computer context, not to the installation directory.
+
+Runtime coordination state is stored at:
+
+    %LOCALAPPDATA%\MiniServer\runtime\
+
+using:
+
+    startup.lock
+    instance.lock
+    instance.json
+
+startup.lock serializes concurrent startup attempts within the local user/computer context. instance.lock is held by the active server process for its lifetime and is authoritative for whether that local instance is active. instance.json contains repeated-start information, including the active dynamically assigned TCP port.
+
+No machine- or process-specific runtime lock or port state may be stored in or coordinated through the shared installation directory.
+
+### Startup and Repeated Starts
+
+A startup attempt obtains startup.lock before it evaluates or changes local instance state.
+
+If no active process owns instance.lock, the new process invalidates stale state, obtains and retains instance.lock, starts the server on 127.0.0.1 using port 0, obtains the assigned port, confirms readiness, and publishes that port in instance.json.
+
+If another local process owns instance.lock, the startup attempt does not start another server. It obtains the active port from valid local runtime state, opens the existing local server URL, and exits.
+
+Startup races and lock acquisition use bounded, deterministic waits. A state file alone is never proof that an instance is active. Failure to obtain valid state for an actively locked instance fails cleanly rather than starting a competing local process.
+
+The Mini Server process remains independent of Microsoft Edge, and v1 provides no browser-accessible HTTP shutdown endpoint.
+
+### Rationale
+
+An installation-scoped lock on a shared drive would cause unrelated computers to block each other and would publish a loopback port that is unusable from the other computers. Local user-specific runtime state aligns instance coordination with the local 127.0.0.1 server that it describes.
+
+### Consequences
+
+- User A on Computer A and User B on Computer B may run the same shared installation concurrently.
+- One person may run Mini Server in separate computer or VDI contexts concurrently.
+- Repeated starts in the same local user/computer context reuse or detect the active local instance.
+- The installation contains no authoritative runtime lock or port state.
+- The server continues to bind exclusively to 127.0.0.1 and request port 0.
+- The assigned port is published only after successful local server startup.
+- Process termination releases the process-owned instance.lock; stale state alone does not block a later start.
+
+---
+
+## D-021 — Explicit Shared and Private Persistence Scopes
+
+### Decision
+
+Every persistence operation explicitly selects exactly one of two scopes:
+
+    shared
+    private
+
+There is no implicit or default persistence scope in v1.
+
+Shared application persistence is stored at:
+
+    <installation-root>\www\<site>\data\data.json
+
+Private application persistence is stored at:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
+The private structure intentionally mirrors the shared application's data/data.json structure. Both scopes use the same section-based JSON model and operations.
+
+The server derives and validates both locations from the URL-selected site and scope. Clients never provide arbitrary filesystem paths.
+
+Private means data stored in the current Windows user's profile rather than in the shared installation. It does not provide authentication, authorization, encryption, or isolation between mutually hostile applications.
+
+### Rationale
+
+A shared/network installation needs a deliberate distinction between data shared by users of that installation and data belonging to the current user's profile. Mandatory selection prevents accidental reliance on an ambiguous default.
+
+### Consequences
+
+- Each valid site can have one shared and one private persistence file.
+- Shared data follows the installation and may be accessed by users of that shared installation.
+- Private data follows the current user's %APPDATA% profile independently of the installation location.
+- Both files use a JSON object root whose top-level properties are Sections.
+- Static-serving protection continues to apply to <installation-root>\www\<site>\data\.
+- Private storage is outside the web root and is not normal static content.
+- No migration, compatibility alias, or legacy unscoped storage behavior is required for the discarded pre-v1 implementation.
+
+---
+
+## D-022 — Explicitly Scoped Persistence API Contract
+
+### Decision
+
+The HTTP persistence API places the mandatory scope between api and the operation:
+
+    /<site>/api/<scope>/<operation>
+
+where <scope> is private or shared.
+
+The operations are:
+
+    GET    /<site>/api/<scope>/read?section=<name>
+    GET    /<site>/api/<scope>/readAll
+    POST   /<site>/api/<scope>/write
+    DELETE /<site>/api/<scope>/remove?section=<name>
+    DELETE /<site>/api/<scope>/clear
+
+An absent, unknown, or otherwise invalid scope is an invalid API request. The alternative layout /<site>/<scope>/api/<operation> is not part of the contract.
+
+The browser-side API uses the operation first and a mandatory terminal scope selector afterwards:
+
+    MiniApi.read(section).private()
+    MiniApi.read(section).shared()
+    MiniApi.readAll().private()
+    MiniApi.readAll().shared()
+    MiniApi.write(data).private()
+    MiniApi.write(data).shared()
+    MiniApi.remove(section).private()
+    MiniApi.remove(section).shared()
+    MiniApi.clear().private()
+    MiniApi.clear().shared()
+
+The terminal .private() or .shared() call executes the asynchronous operation and returns its Promise. Scope-first forms such as MiniApi.private().read(...), and the old names readSection and removeSection, are not part of the v1 contract.
+
+The existing section validation, JSON root model, operation semantics, successful HTTP statuses, and JSON error structure recorded in superseded D-017 remain the behavior of the corresponding scoped operations except where this decision changes the URL or browser-side API.
+
+### Rationale
+
+Putting scope in the HTTP URL makes the server mapping explicit. Operation-first fluent browser syntax keeps the familiar operation names while requiring the developer to make the persistence destination visible at every call site.
+
+### Consequences
+
+- No unscoped persistence endpoint or MiniApi call is valid.
+- read reads one Section and readAll reads the complete root object.
+- write creates or replaces supplied Sections, remove removes one Section, and clear resets the selected persistence file to {}.
+- The site comes from the page/request namespace; the scope comes from the mandatory selector.
+- Java server routes, mini-api.js, examples, templates, tests, and documentation must use the same scoped contract.
+
+---
+
+## D-023 — Concurrency-Safe Persistence Writes
+
+### Decision
+
+The persistence operations write, remove, and clear are write operations.
+
+Each write operation obtains a short-lived exclusive file lock associated with its target shared or private persistence file. Lock acquisition uses a bounded timeout, and the lock is held only for the duration required to complete that write safely.
+
+Writes are atomic. Readers do not acquire a separate read lock and must observe either the previous complete JSON file or the new complete JSON file, never a partially written file.
+
+Failure to obtain the required write lock fails the operation cleanly. Its intentionally simple external error remains:
+
+    Write failed
+
+Persistence-file locking is separate from the runtime coordination locks defined by D-020. Runtime locking controls one local server instance; persistence locking protects one target data file across processes and computers.
+
+### Rationale
+
+Shared persistence may be written by server processes on different computers, and private persistence can also encounter concurrent access within a user's environment. Local single-instance coordination cannot protect these file operations.
+
+### Consequences
+
+- Read-modify-write behavior for a modifying operation occurs while holding the target file's exclusive write lock.
+- Lock waits are bounded and do not hang indefinitely.
+- A lock failure never reports success and does not intentionally damage existing data.
+- Reads remain lock-free and rely on atomic replacement for complete-file visibility.
+- The project does not introduce a database, transaction service, or large logging/recovery subsystem.
 
 ---
 

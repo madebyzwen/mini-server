@@ -101,6 +101,8 @@ The solution should use the networking capabilities provided by the Java runtime
 
 The assigned port is runtime state and must not be treated as a persistent configuration value.
 
+It must be published only in the local per-user/computer runtime state defined by D-020, never through a shared installation directory.
+
 ## Related Decisions
 
 - D-001 — Java 8 Compatibility
@@ -108,6 +110,7 @@ The assigned port is runtime state and must not be treated as a persistent confi
 - D-003 — Dynamic Port Allocation
 - D-004 — Browser Launch Uses the Assigned Port
 - D-014 — Not Intended for Public Internet Use
+- D-020 — Local Per-User/Computer Runtime Instance
 
 ## Related Architecture
 
