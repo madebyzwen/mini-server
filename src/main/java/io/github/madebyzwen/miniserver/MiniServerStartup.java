@@ -90,13 +90,18 @@ public final class MiniServerStartup {
 
             if (instanceLock == null) {
                 int activePort = awaitActivePort(stateStore);
-                release(startupLock);
-                startupLock = null;
-                close(startupChannel);
-                startupChannel = null;
-                close(instanceChannel);
-                instanceChannel = null;
-                return StartupResult.existingInstance(activePort);
+                observer.onActiveStateRead();
+                instanceLock = tryAcquire(instanceChannel);
+
+                if (instanceLock == null) {
+                    release(startupLock);
+                    startupLock = null;
+                    close(startupChannel);
+                    startupChannel = null;
+                    close(instanceChannel);
+                    instanceChannel = null;
+                    return StartupResult.existingInstance(activePort);
+                }
             }
 
             stateStore.invalidate();
@@ -278,6 +283,9 @@ public final class MiniServerStartup {
         void onStartupLockUnavailable();
 
         void onStartupLockAcquired();
+
+        default void onActiveStateRead() {
+        }
     }
 
     static final class Settings {

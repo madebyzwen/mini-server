@@ -116,6 +116,57 @@ class MiniServerStartupTest {
     }
 
     @Test
+    void repeatedStartBecomesNewInstanceWhenActiveServerStopsAfterStateRead() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("shutdown-race");
+        RecordingServerFactory serverFactory = new RecordingServerFactory();
+        StartupResult first = own(
+                startup(runtimeDirectory, NORMAL_SETTINGS, serverFactory).start());
+        CountDownLatch candidateStateRead = new CountDownLatch(1);
+        CountDownLatch allowFinalLockVerification = new CountDownLatch(1);
+        MiniServerStartup.StartupObserver observer = new MiniServerStartup.StartupObserver() {
+            @Override
+            public void onStartupLockUnavailable() {
+            }
+
+            @Override
+            public void onStartupLockAcquired() {
+            }
+
+            @Override
+            public void onActiveStateRead() {
+                candidateStateRead.countDown();
+                awaitLatch(allowFinalLockVerification);
+            }
+        };
+
+        ExecutorService executor = own(Executors.newSingleThreadExecutor());
+        Future<StartupResult> repeatedFuture = executor.submit(
+                () -> new MiniServerStartup(
+                        runtimeDirectory, NORMAL_SETTINGS, serverFactory, observer).start());
+        assertTrue(candidateStateRead.await(2L, TimeUnit.SECONDS));
+        assertEquals(
+                first.getPort(),
+                new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
+
+        first.close();
+        assertTrue(canAcquire(runtimeDirectory.resolve(MiniServerStartup.INSTANCE_LOCK_FILE)));
+        allowFinalLockVerification.countDown();
+
+        StartupResult replacement = own(repeatedFuture.get(2L, TimeUnit.SECONDS));
+
+        assertTrue(replacement.isNewInstance());
+        assertEquals(2, serverFactory.getCreationCount());
+        InetSocketAddress replacementRequest = serverFactory.getRequestedAddresses().get(1);
+        assertEquals(InetAddress.getByName("127.0.0.1"), replacementRequest.getAddress());
+        assertEquals(0, replacementRequest.getPort());
+        assertEquals(replacement.getRunningServer().getAddress().getPort(), replacement.getPort());
+        assertEquals(
+                replacement.getPort(),
+                new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
+        assertFalse(canAcquire(runtimeDirectory.resolve(MiniServerStartup.INSTANCE_LOCK_FILE)));
+    }
+
+    @Test
     void staleStateIsReplacedByTheActualNewServerPort() throws Exception {
         Path runtimeDirectory = temporaryDirectory.resolve("stale-state");
         Files.createDirectories(runtimeDirectory);
