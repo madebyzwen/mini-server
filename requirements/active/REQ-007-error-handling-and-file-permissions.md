@@ -105,7 +105,7 @@ Examples include:
 - Invalid section names
 - Invalid JSON request bodies
 - Unsupported operations
-- Invalid application scope
+- Invalid application site or site namespace
 - Missing or unknown persistence scope
 - Requests that attempt to escape or override the persistence location derived from the requested site namespace
 - Attempts to access arbitrary filesystem paths
@@ -225,7 +225,7 @@ Application-level convenience features must not be described as security mechani
 - D-001 — Java 8 Compatibility
 - D-005 — No Database
 - D-006 — Generic Server-Side Data Handling
-- D-008 — Application Scope Is Derived from the URL
+- D-008 — Application Site and Persistence Scope Are Derived from the URL
 - D-014 — Not Intended for Public Internet Use
 - D-021 — Explicit Shared and Private Persistence Scopes
 - D-022 — Explicitly Scoped Persistence API Contract

@@ -203,7 +203,7 @@ A deliberately written client may explicitly address another valid application's
 
 ---
 
-## D-008 — Application Scope Is Derived from the URL
+## D-008 — Application Site and Persistence Scope Are Derived from the URL
 
 ### Decision
 
@@ -1411,7 +1411,145 @@ The browser-side API uses the operation first and a mandatory terminal scope sel
 
 The terminal .private() or .shared() call executes the asynchronous operation and returns its Promise. Scope-first forms such as MiniApi.private().read(...), and the old names readSection and removeSection, are not part of the v1 contract.
 
-The existing section validation, JSON root model, operation semantics, successful HTTP statuses, and JSON error structure recorded in superseded D-017 remain the behavior of the corresponding scoped operations except where this decision changes the URL or browser-side API.
+D-022 supersedes the unscoped HTTP contract and old browser-side method names recorded historically in D-017. D-017 does not define active v1 behavior.
+
+### Persistence Root Structure
+
+Each selected shared or private persistence file contains a JSON object at its root.
+
+The top-level properties are named Sections. The empty persistence state is:
+
+    {}
+
+The root must not be an array, string, number, boolean, or null.
+
+Individual Section values may contain any JSON-compatible object, array, string, number, boolean, or null. The server does not interpret their application-specific meaning.
+
+Invalid JSON or a non-object root is an error and must not be silently reinterpreted or reset.
+
+### Section Names
+
+Section names are logical JSON property names, not filesystem paths.
+
+A valid Section name:
+
+- contains between 1 and 128 characters;
+- is not empty;
+- has no leading or trailing whitespace;
+- contains no control characters.
+
+Unicode characters and normal spaces, hyphens, underscores, and periods may appear inside a Section name.
+
+MiniApi must URL-encode Section names when constructing HTTP requests. The server must never interpret a Section name as a filesystem path.
+
+### read
+
+    GET /<site>/api/<scope>/read?section=<name>
+
+returns the requested Section's stored JSON value directly with 200 OK.
+
+A stored JSON null is a valid value and returns successfully as:
+
+    null
+
+A missing Section returns 404 Not Found with the standard JSON error response. A missing selected persistence file is equivalent to the requested Section not existing.
+
+### readAll
+
+    GET /<site>/api/<scope>/readAll
+
+returns the complete root JSON object with 200 OK.
+
+If the selected persistence file does not yet exist, readAll returns:
+
+    {}
+
+### write
+
+    POST /<site>/api/<scope>/write
+
+accepts a non-empty JSON object. Its top-level properties are the Sections to create or replace.
+
+For each supplied property:
+
+- a missing Section is created;
+- an existing Section is replaced;
+- Sections omitted from the request remain unchanged.
+
+A valid write may create the selected persistence file and its data directory inside the server-derived location for an existing valid application site.
+
+A successful write returns 204 No Content with an empty response body.
+
+### remove
+
+    DELETE /<site>/api/<scope>/remove?section=<name>
+
+removes exactly one named Section. Other Sections remain unchanged.
+
+A successful removal returns 204 No Content with an empty response body.
+
+A missing Section returns 404 Not Found with the standard JSON error response. A missing selected persistence file is equivalent to the requested Section not existing.
+
+### clear
+
+    DELETE /<site>/api/<scope>/clear
+
+resets the selected persistence file to:
+
+    {}
+
+Clearing an empty or not-yet-created persistence store is successful and idempotent.
+
+A successful clear returns 204 No Content with an empty response body.
+
+### Valid Site and Persistence Location
+
+The site namespace must identify an existing valid first-level application directory below www. Reserved areas such as www/_shared are not valid application persistence namespaces.
+
+The API must not create a new application namespace or application directory merely because a request addresses an unknown site.
+
+The server derives the physical persistence location from the validated site and explicit persistence scope according to D-021.
+
+Clients cannot supply or override a persistence filesystem path through a query parameter, request body, header, Section name, or other client-controlled storage location.
+
+### Successful Responses
+
+Operations returning JSON data use 200 OK with:
+
+    Content-Type: application/json; charset=utf-8
+
+Successful write, remove, and clear operations use 204 No Content with an empty response body.
+
+### Error Response Format
+
+API errors use:
+
+    {
+        "error": {
+            "code": "SECTION_NOT_FOUND",
+            "message": "Section not found."
+        }
+    }
+
+The code value is a stable machine-readable error identifier.
+
+The message value is a concise human-readable description.
+
+Browser-facing errors must not expose unnecessary absolute filesystem paths or sensitive internal details.
+
+### HTTP Error Categories
+
+The API uses:
+
+- 400 Bad Request for malformed requests, missing or invalid persistence scope, invalid Section names, invalid JSON, invalid write payloads, or missing required input;
+- 404 Not Found for missing Sections, unknown application sites, or unknown API operations;
+- 405 Method Not Allowed when a known operation is called with an unsupported HTTP method;
+- 415 Unsupported Media Type when a write request lacks an acceptable JSON content type;
+- 500 Internal Server Error for unexpected server-side or persistence failures.
+
+Persistence write-lock failures follow D-023.
+
+A failed operation must never return a successful HTTP status.
 
 ### Rationale
 

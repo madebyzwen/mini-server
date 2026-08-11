@@ -254,6 +254,10 @@ API errors use:
         }
     }
 
+The `code` value is a stable machine-readable error identifier.
+
+The `message` value is a concise human-readable description.
+
 The API uses:
 
 - 400 Bad Request for malformed requests, missing/invalid scope, invalid Section names, invalid JSON, invalid payloads, or missing required input
@@ -294,6 +298,8 @@ REQ-003 is fulfilled when:
 - Write-lock failure fails with the external message Write failed.
 - Invalid stored JSON or a non-object root is not silently overwritten.
 - API errors use the standard JSON structure and appropriate HTTP status.
+- API error `code` values are stable machine-readable identifiers.
+- API error `message` values are concise human-readable descriptions.
 - Private storage is not described as an authentication or authorization boundary.
 
 ## Constraints
@@ -309,7 +315,7 @@ The contract must remain consistent across the Java server, mini-api.js, example
 - D-001 — Java 8 Compatibility
 - D-005 — No Database
 - D-006 — Generic Server-Side Data Handling
-- D-008 — Application Scope Is Derived from the URL
+- D-008 — Application Site and Persistence Scope Are Derived from the URL
 - D-009 — Shared Central API Implementation
 - D-014 — Not Intended for Public Internet Use
 - D-015 — Persistence Data Is Not Served as Static Content

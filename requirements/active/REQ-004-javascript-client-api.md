@@ -256,7 +256,7 @@ No legacy aliases, unscoped calls, or default scope are required.
 ## Related Decisions
 
 - D-006 — Generic Server-Side Data Handling
-- D-008 — Application Scope Is Derived from the URL
+- D-008 — Application Site and Persistence Scope Are Derived from the URL
 - D-009 — Shared Central API Implementation
 - D-010 — Shared JavaScript API Library
 - D-011 — Native JavaScript Objects and Arrays
