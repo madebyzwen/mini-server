@@ -430,7 +430,7 @@ Acceptance:
 
 ## T-005 — Implement JSON Persistence Layer
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
