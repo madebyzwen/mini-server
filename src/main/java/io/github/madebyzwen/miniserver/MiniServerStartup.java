@@ -1,5 +1,6 @@
 package io.github.madebyzwen.miniserver;
 
+import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
@@ -113,10 +114,10 @@ public final class MiniServerStartup {
 
             stateStore.invalidate();
 
-            StaticFileHandler staticFileHandler = createStaticFileHandler();
+            HttpHandler rootHandler = createRootHandler();
             InetAddress loopback = InetAddress.getByName(LOOPBACK_ADDRESS);
             httpServer = serverFactory.create(new InetSocketAddress(loopback, REQUESTED_PORT));
-            httpServer.createContext("/", staticFileHandler);
+            httpServer.createContext("/", rootHandler);
             httpServer.start();
             validateActiveAddress(httpServer.getAddress(), loopback);
 
@@ -173,9 +174,14 @@ public final class MiniServerStartup {
         return WebRootResolver.resolve();
     }
 
-    private StaticFileHandler createStaticFileHandler() throws StartupException {
+    private HttpHandler createRootHandler() throws StartupException {
         try {
-            return new StaticFileHandler(resolveWebRoot());
+            Path webRoot = resolveWebRoot();
+            StaticFileHandler staticFileHandler = new StaticFileHandler(webRoot);
+            PersistenceApiHandler apiHandler = new PersistenceApiHandler(
+                    new PersistenceTargetResolver(webRoot),
+                    new JsonPersistenceStore());
+            return new RootRequestRouter(apiHandler, staticFileHandler);
         } catch (IOException exception) {
             throw new StartupException("The Mini Server web root cannot be accessed.", exception);
         }

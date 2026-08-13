@@ -520,7 +520,7 @@ Acceptance:
 
 ## T-006 — Implement HTTP API Endpoints
 
-Status: Planned
+Status: Done
 
 Related requirements:
 

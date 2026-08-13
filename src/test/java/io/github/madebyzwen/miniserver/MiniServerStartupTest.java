@@ -131,6 +131,30 @@ class MiniServerStartupTest {
     }
 
     @Test
+    void newInstanceRegistersPersistenceApiBeforeServingRequests() throws Exception {
+        Files.createDirectories(testWebRoot.resolve("example"));
+        StartupResult result = own(
+                startup(
+                        temporaryDirectory.resolve("api-integration"),
+                        NORMAL_SETTINGS,
+                        new RecordingServerFactory()).start());
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(
+                "http://127.0.0.1:"
+                        + result.getPort()
+                        + "/example/api/shared/readAll").openConnection();
+        connection.setConnectTimeout(1000);
+        connection.setReadTimeout(1000);
+        try {
+            assertEquals(200, connection.getResponseCode());
+            assertEquals("application/json; charset=utf-8", connection.getContentType());
+            assertEquals("{}", readText(connection.getInputStream()));
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    @Test
     void unavailableWebRootFailsNewStartupAndReleasesCoordinationResources() throws Exception {
         Path runtimeDirectory = temporaryDirectory.resolve("missing-web-root");
         Path missingWebRoot = temporaryDirectory.resolve("does-not-exist");
