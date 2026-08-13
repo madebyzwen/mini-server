@@ -81,6 +81,18 @@ class StaticFileHandlerTest {
     }
 
     @Test
+    void servesSharedMiniApiLibraryAsNormalJavaScript() throws Exception {
+        writeText("_shared/mini-api.js", "window.MiniApi = {};");
+        startServer(new StaticFileHandler(webRoot));
+
+        Response response = request("GET", "/_shared/mini-api.js");
+
+        assertEquals(200, response.status);
+        assertEquals("window.MiniApi = {};", response.bodyText());
+        assertTrue(response.header("content-type").startsWith("application/javascript"));
+    }
+
+    @Test
     void servesStaticJsonOutsideReservedDirectory() throws Exception {
         writeText("example/assets/config.json", "{\"theme\":\"blue\"}");
         startServer(new StaticFileHandler(webRoot));

@@ -625,7 +625,7 @@ Acceptance:
 
 ## T-007 — Implement Shared mini-api.js Library
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
