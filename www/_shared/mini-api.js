@@ -140,6 +140,94 @@
         return error;
     }
 
+    function invalidJsonValue() {
+        throw new Error("Write data contains a value that is not valid JSON.");
+    }
+
+    function hasEnumerableSymbolProperty(value) {
+        return typeof Object.getOwnPropertySymbols === "function"
+                && Object.getOwnPropertySymbols(value).some(function (symbol) {
+                    return Object.prototype.propertyIsEnumerable.call(value, symbol);
+                });
+    }
+
+    function copyJsonValue(value, ancestors) {
+        if (value === null) {
+            return null;
+        }
+
+        var type = typeof value;
+        if (type === "string" || type === "boolean") {
+            return value;
+        }
+        if (type === "number") {
+            if (!isFinite(value)) {
+                invalidJsonValue();
+            }
+            return value;
+        }
+        if (type !== "object") {
+            invalidJsonValue();
+        }
+        if (ancestors.indexOf(value) !== -1
+                || typeof value.toJSON === "function"
+                || hasEnumerableSymbolProperty(value)) {
+            invalidJsonValue();
+        }
+
+        var array = Array.isArray(value);
+        if (!array && Object.prototype.toString.call(value) !== "[object Object]") {
+            invalidJsonValue();
+        }
+
+        ancestors.push(value);
+        try {
+            if (array) {
+                return copyJsonArray(value, ancestors);
+            }
+            return copyJsonObject(value, ancestors);
+        } finally {
+            ancestors.pop();
+        }
+    }
+
+    function copyJsonArray(value, ancestors) {
+        var keys = Object.keys(value);
+        keys.forEach(function (key) {
+            var index = Number(key);
+            if (String(index) !== key
+                    || index < 0
+                    || index >= value.length
+                    || Math.floor(index) !== index) {
+                invalidJsonValue();
+            }
+        });
+
+        var copy = [];
+        for (var index = 0; index < value.length; index += 1) {
+            if (!Object.prototype.hasOwnProperty.call(value, index)) {
+                invalidJsonValue();
+            }
+            copy.push(copyJsonValue(value[index], ancestors));
+        }
+        return copy;
+    }
+
+    function copyJsonObject(value, ancestors) {
+        var copy = Object.create(null);
+        Object.keys(value).forEach(function (key) {
+            copy[key] = copyJsonValue(value[key], ancestors);
+        });
+        return copy;
+    }
+
+    function requirePersistenceRoot(value) {
+        if (value === null || typeof value !== "object" || Array.isArray(value)) {
+            throw new Error("The server returned an invalid persistence root.");
+        }
+        return value;
+    }
+
     function serializeWrite(data) {
         if (data === null || typeof data !== "object" || Array.isArray(data)) {
             throw new Error("Write data must be a non-empty object.");
@@ -151,27 +239,9 @@
         }
         requestedSections.forEach(validateSection);
 
-        var body = JSON.stringify(data);
+        var body = JSON.stringify(copyJsonValue(data, []));
         if (typeof body !== "string") {
             throw new Error("Write data could not be serialized.");
-        }
-
-        var serialized;
-        try {
-            serialized = JSON.parse(body);
-        } catch (error) {
-            throw new Error("Write data could not be serialized.");
-        }
-        if (serialized === null || typeof serialized !== "object" || Array.isArray(serialized)) {
-            throw new Error("Write data could not be serialized.");
-        }
-
-        var serializedSections = Object.keys(serialized);
-        if (serializedSections.length !== requestedSections.length
-                || requestedSections.some(function (section) {
-                    return !Object.prototype.hasOwnProperty.call(serialized, section);
-                })) {
-            throw new Error("Write data could not be serialized without losing Sections.");
         }
         return body;
     }
@@ -191,7 +261,7 @@
                         endpoint(scope, "readAll"),
                         {method: "GET"},
                         200,
-                        true);
+                        true).then(requirePersistenceRoot);
             });
         },
 

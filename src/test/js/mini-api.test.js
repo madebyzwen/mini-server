@@ -170,16 +170,38 @@ test("read and readAll reject missing or malformed successful JSON", async () =>
     }
 });
 
-test("readAll resolves an empty persistence object", async () => {
-    const loaded = load("/example/", () => Promise.resolve(response(200, "{}")));
-    const result = await loaded.MiniApi.readAll().private();
-    assertJsonValue(result, {});
-    assert.equal(loaded.requests[0].url, "/example/api/private/readAll");
-    assert.equal(loaded.requests[0].options.method, "GET");
+test("readAll resolves empty and populated persistence objects", async () => {
+    for (const expected of [{}, {settings: {theme: "dark"}, count: 2}]) {
+        const loaded = load("/example/", () =>
+            Promise.resolve(response(200, JSON.stringify(expected))));
+        const result = await loaded.MiniApi.readAll().private();
+        assertJsonValue(result, expected);
+        assert.equal(loaded.requests[0].url, "/example/api/private/readAll");
+        assert.equal(loaded.requests[0].options.method, "GET");
+    }
+});
+
+test("readAll rejects valid JSON values that are not persistence objects", async () => {
+    for (const value of [null, [], "text", 42, true, false]) {
+        const loaded = load("/example/", () =>
+            Promise.resolve(response(200, JSON.stringify(value))));
+        await rejects(loaded.MiniApi.readAll().shared());
+        assert.equal(loaded.requests.length, 1);
+    }
 });
 
 test("write serializes one or many Sections with the exact POST contract", async () => {
-    const data = {settings: {theme: "dark"}, items: ["A", "B"], optional: null};
+    const data = {
+        settings: {
+            theme: "dark",
+            panels: [
+                {id: 1, enabled: true, tags: ["primary", "wide"]},
+                [false, null, {threshold: 12.5}]
+            ]
+        },
+        items: ["A", "B"],
+        optional: null
+    };
     const textCalls = {count: 0};
     const loaded = load("/example/", () =>
         Promise.resolve(response(204, "must not parse", {textCalls})));
@@ -216,10 +238,27 @@ test("write rejects invalid Section names without fetching", async () => {
     }
 });
 
-test("write rejects serialization failures and silently omitted Sections", async () => {
+test("write rejects every value outside the JSON data model without fetching", async () => {
     const circular = {};
     circular.self = circular;
+    const sparse = [];
+    sparse[1] = "value";
     const cases = [
+        {value: NaN},
+        {value: Infinity},
+        {value: -Infinity},
+        {value: {nested: undefined}},
+        {value: {nested: function () {}}},
+        {value: {nested: Symbol("nested")}},
+        {value: {nested: BigInt(1)}},
+        {value: [undefined]},
+        {value: [function () {}]},
+        {value: [Symbol("array")]},
+        {value: [BigInt(1)]},
+        {value: [NaN]},
+        {value: [Infinity]},
+        {value: [-Infinity]},
+        {value: sparse},
         {value: circular},
         {value: BigInt(1)},
         {value: undefined},
@@ -228,7 +267,9 @@ test("write rejects serialization failures and silently omitted Sections", async
     ];
     for (const data of cases) {
         const loaded = load("/example/");
-        await rejects(loaded.MiniApi.write(data).shared());
+        const result = loaded.MiniApi.write(data).shared();
+        assert.ok(result instanceof loaded.Promise);
+        await rejects(result);
         assert.equal(loaded.requests.length, 0);
     }
 
@@ -240,7 +281,9 @@ test("write rejects serialization failures and silently omitted Sections", async
         }
     });
     const loaded = load("/example/");
-    await rejects(loaded.MiniApi.write(transformed).shared());
+    const result = loaded.MiniApi.write(transformed).shared();
+    assert.ok(result instanceof loaded.Promise);
+    await rejects(result);
     assert.equal(loaded.requests.length, 0);
 });
 
