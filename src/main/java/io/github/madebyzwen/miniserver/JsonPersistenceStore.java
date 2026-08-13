@@ -8,6 +8,8 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.Strictness;
 import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.MalformedJsonException;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -284,12 +286,14 @@ final class JsonPersistenceStore {
             JsonReader jsonReader = new JsonReader(reader);
             jsonReader.setStrictness(Strictness.STRICT);
             JsonElement root = JsonParser.parseReader(jsonReader);
-            if (!root.isJsonObject()) {
+            if (!root.isJsonObject() || jsonReader.peek() != JsonToken.END_DOCUMENT) {
                 throw invalidData(null);
             }
             return root.getAsJsonObject();
         } catch (NoSuchFileException exception) {
             return new JsonObject();
+        } catch (MalformedJsonException exception) {
+            throw invalidData(exception);
         } catch (JsonParseException exception) {
             throw invalidData(exception);
         } catch (IOException | SecurityException exception) {

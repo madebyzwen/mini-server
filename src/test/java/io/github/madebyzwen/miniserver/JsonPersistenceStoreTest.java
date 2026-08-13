@@ -248,6 +248,44 @@ class JsonPersistenceStoreTest {
     }
 
     @Test
+    void trailingGarbageAndMultipleTopLevelValuesAreRejectedAndNeverReplaced()
+            throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.SHARED, "write");
+        Files.createDirectories(target.getDataFile().getParent());
+        List<String> invalidDocuments = Arrays.asList(
+                "{\"valid\":true} garbage",
+                "{\"valid\":true}\n{\"second\":true}");
+
+        for (String invalidDocument : invalidDocuments) {
+            writeText(target.getDataFile(), invalidDocument);
+
+            PersistenceException readFailure = assertThrows(
+                    PersistenceException.class,
+                    () -> store.readAll(target),
+                    invalidDocument);
+            assertEquals(PersistenceException.Reason.INVALID_DATA, readFailure.getReason());
+
+            PersistenceException writeFailure = assertThrows(
+                    PersistenceException.class,
+                    () -> store.write(target, section("new", "value")),
+                    invalidDocument);
+            assertEquals(PersistenceException.Reason.INVALID_DATA, writeFailure.getReason());
+            assertEquals(invalidDocument, readText(target.getDataFile()));
+        }
+    }
+
+    @Test
+    void completeObjectWithTrailingWhitespaceRemainsValid() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.SHARED, "readAll");
+        Files.createDirectories(target.getDataFile().getParent());
+        writeText(target.getDataFile(), "{\"valid\":true}\n\t  ");
+
+        JsonObject expected = new JsonObject();
+        expected.addProperty("valid", true);
+        assertEquals(expected, store.readAll(target));
+    }
+
+    @Test
     void resolvedTargetDoesNotRecreateADeletedSharedApplicationNamespace() throws Exception {
         ResolvedPersistenceTarget target = target(PersistenceScope.SHARED, "write");
         Files.delete(webRoot.resolve("example"));
