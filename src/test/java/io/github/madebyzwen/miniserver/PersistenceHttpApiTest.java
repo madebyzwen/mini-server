@@ -24,6 +24,8 @@ import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -167,6 +169,20 @@ class PersistenceHttpApiTest {
         assertJsonSuccess("/example/api/shared/read?section=number", sections.get("number"));
         assertJsonSuccess("/example/api/shared/read?section=boolean", sections.get("boolean"));
         assertJsonSuccess("/example/api/shared/read?section=optional", JsonNull.INSTANCE);
+    }
+
+    @Test
+    void bundledExampleStarterDataIsAvailableThroughTheSharedApi() throws Exception {
+        Path bundledData = Paths.get("www", "example", "data", "data.json")
+                .toAbsolutePath()
+                .normalize();
+        Path fixtureData = webRoot.resolve("example/data/data.json");
+        Files.createDirectories(fixtureData.getParent());
+        Files.copy(bundledData, fixtureData, StandardCopyOption.REPLACE_EXISTING);
+
+        assertJsonSuccess(
+                "/example/api/shared/read?section=start",
+                JsonParser.parseString("\"Hello Mini Webserver\""));
     }
 
     @Test

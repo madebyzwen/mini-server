@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Interactive reference application for Mini Server persistence.">
+    <title>Mini Server Example</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <script src="/_shared/mini-api.js" defer></script>
+    <script src="assets/app.js" defer></script>
+</head>
+<body>
+    <header class="site-header">
+        <div class="page-shell header-layout">
+            <div>
+                <p class="eyebrow">Reference application</p>
+                <h1>Mini Server Example</h1>
+                <p class="intro">
+                    Explore shared and private JSON persistence through the browser-native
+                    <code>MiniApi</code> interface.
+                </p>
+            </div>
+            <div class="connection-badge" aria-label="Local Mini Server application">
+                <span class="connection-dot" aria-hidden="true"></span>
+                Local application
+            </div>
+        </div>
+    </header>
+
+    <main class="page-shell">
+        <section class="welcome-card" aria-labelledby="welcome-title">
+            <div>
+                <p class="eyebrow">Shared starter Section</p>
+                <h2 id="welcome-title">Live persistence check</h2>
+                <p class="welcome-copy">
+                    This value is loaded from the bundled <code>start</code> Section through
+                    <code>MiniApi.read("start").shared()</code>.
+                </p>
+            </div>
+            <div class="welcome-result" aria-live="polite" aria-atomic="true">
+                <strong id="hello-value">Loading…</strong>
+                <span id="hello-status">Reading shared starter data</span>
+            </div>
+        </section>
+
+        <div class="workspace-grid">
+            <section class="panel controls-panel" aria-labelledby="playground-title">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Interactive playground</p>
+                        <h2 id="playground-title">Persistence operations</h2>
+                    </div>
+                    <span id="selected-scope-badge" class="scope-badge scope-badge-shared">
+                        Shared selected
+                    </span>
+                </div>
+
+                <fieldset class="scope-selector">
+                    <legend>Persistence scope</legend>
+                    <div class="scope-options">
+                        <label>
+                            <input type="radio" name="scope" value="shared" checked>
+                            <span>Shared</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="scope" value="private">
+                            <span>Private</span>
+                        </label>
+                    </div>
+                    <p id="selected-scope-description" class="scope-description">
+                        Shared data is stored with this application installation.
+                    </p>
+                </fieldset>
+
+                <div class="scope-facts" aria-label="Persistence location explanation">
+                    <div>
+                        <strong>Shared</strong>
+                        <code>www/example/data/data.json</code>
+                        <span>Travels with this installation and may be shared by its users.</span>
+                    </div>
+                    <div>
+                        <strong>Private</strong>
+                        <code>%APPDATA%\MiniServerData\example\data\data.json</code>
+                        <span>Belongs to the current Windows user profile.</span>
+                    </div>
+                </div>
+                <p class="privacy-note">
+                    Private means user-profile storage. It is not authentication, encryption,
+                    or isolation from other trusted applications on this server.
+                </p>
+
+                <div class="operation-list">
+                    <article class="operation-card">
+                        <div>
+                            <h3>Read Section</h3>
+                            <p>Return one native JSON value from the selected scope.</p>
+                        </div>
+                        <div class="operation-controls input-action">
+                            <label for="read-section">Section name</label>
+                            <input id="read-section" name="read-section" value="start" autocomplete="off">
+                            <button id="read-button" type="button">Read</button>
+                        </div>
+                    </article>
+
+                    <article class="operation-card compact-operation">
+                        <div>
+                            <h3>Read All</h3>
+                            <p>Return the complete persistence object.</p>
+                        </div>
+                        <button id="read-all-button" type="button">Read All</button>
+                    </article>
+
+                    <article class="operation-card compact-operation">
+                        <div>
+                            <h3>Write Demo Data</h3>
+                            <p>Write native objects and arrays as <code>demo</code> and <code>demoItems</code>.</p>
+                        </div>
+                        <button id="write-button" type="button">Write Demo Data</button>
+                    </article>
+
+                    <article class="operation-card">
+                        <div>
+                            <h3>Remove Section</h3>
+                            <p>Remove one Section while leaving all others unchanged.</p>
+                        </div>
+                        <div class="operation-controls input-action">
+                            <label for="remove-section">Section name</label>
+                            <input id="remove-section" name="remove-section" value="demo" autocomplete="off">
+                            <button id="remove-button" type="button">Remove</button>
+                        </div>
+                    </article>
+
+                    <article class="operation-card compact-operation danger-operation">
+                        <div>
+                            <h3>Clear</h3>
+                            <p>Reset only the currently selected persistence scope.</p>
+                        </div>
+                        <button id="clear-button" class="danger-button" type="button">Clear Selected Scope</button>
+                    </article>
+                </div>
+            </section>
+
+            <aside class="panel output-panel" aria-labelledby="output-title">
+                <div class="panel-heading output-heading">
+                    <div>
+                        <p class="eyebrow">Operation result</p>
+                        <h2 id="output-title">Output</h2>
+                    </div>
+                    <span id="output-state" class="result-state">Ready</span>
+                </div>
+                <p id="output-summary" class="output-summary">
+                    Choose an operation to inspect its result.
+                </p>
+                <pre id="output-value" tabindex="0" aria-live="polite">No operation has run yet.</pre>
+            </aside>
+        </div>
+
+        <section class="panel api-reference" aria-labelledby="reference-title">
+            <div class="reference-intro">
+                <p class="eyebrow">Developer reference</p>
+                <h2 id="reference-title">Use MiniApi from any application</h2>
+                <p>
+                    Include the shared script. MiniApi derives the first application path segment
+                    automatically, handles JSON transport, and requires an explicit scope after
+                    every operation.
+                </p>
+                <pre><code>&lt;script src="/_shared/mini-api.js"&gt;&lt;/script&gt;</code></pre>
+                <ul>
+                    <li>Operation comes first; <code>.shared()</code> or <code>.private()</code> is mandatory.</li>
+                    <li>Pass native JavaScript objects and arrays directly to <code>write</code>.</li>
+                    <li>Shared and private scopes use separate persistence files.</li>
+                    <li>Access persistence through MiniApi, never by requesting <code>data.json</code>.</li>
+                </ul>
+            </div>
+            <pre class="api-calls"><code>MiniApi.read("section").shared()
+MiniApi.read("section").private()
+
+MiniApi.readAll().shared()
+MiniApi.readAll().private()
+
+MiniApi.write(data).shared()
+MiniApi.write(data).private()
+
+MiniApi.remove("section").shared()
+MiniApi.remove("section").private()
+
+MiniApi.clear().shared()
+MiniApi.clear().private()</code></pre>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="page-shell">Mini Server · Dependency-free local web applications</div>
+    </footer>
+</body>
+</html>

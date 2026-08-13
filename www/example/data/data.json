@@ -1,0 +1,12 @@
+{
+  "start": "Hello Mini Webserver",
+  "settings": {
+    "theme": "dark",
+    "compact": false
+  },
+  "favorites": [
+    "Search A",
+    "Search B",
+    "Search C"
+  ]
+}

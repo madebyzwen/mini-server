@@ -982,7 +982,7 @@ Acceptance:
 
 ## T-008 — Create Example Application
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
