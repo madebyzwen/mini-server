@@ -1015,7 +1015,7 @@ Acceptance:
 
 ## T-009 — Create Reusable Template Package
 
-Status: Planned
+Status: Done
 
 Related requirements:
 

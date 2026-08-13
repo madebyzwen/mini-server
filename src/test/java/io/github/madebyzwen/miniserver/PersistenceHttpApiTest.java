@@ -22,11 +22,14 @@ import java.net.Socket;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -183,6 +186,52 @@ class PersistenceHttpApiTest {
         assertJsonSuccess(
                 "/example/api/shared/read?section=start",
                 JsonParser.parseString("\"Hello Mini Webserver\""));
+    }
+
+    @Test
+    void templateCanBeInstalledUnderANewSiteWithoutServerChanges() throws Exception {
+        Path templateSource = Paths.get("template").toAbsolutePath().normalize();
+        Path installedSite = webRoot.resolve("my-app");
+        copyDirectory(templateSource, installedSite);
+        Files.copy(
+                Paths.get("www", "_shared", "mini-api.js").toAbsolutePath().normalize(),
+                webRoot.resolve("_shared/mini-api.js"),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        Response redirect = request("GET", "/my-app");
+        Response page = request("GET", "/my-app/");
+        Response library = request("GET", "/_shared/mini-api.js");
+        Response blockedData = request("GET", "/my-app/data/data.json");
+
+        assertEquals(301, redirect.status);
+        assertEquals("/my-app/", redirect.header("location"));
+        assertEquals(200, page.status);
+        assertTrue(page.bodyText().contains("Replace this demo with your application."));
+        assertEquals(200, library.status);
+        assertTrue(library.bodyText().contains("window.MiniApi"));
+        assertEquals(404, blockedData.status);
+        assertJsonSuccess(
+                "/my-app/api/shared/read?section=start",
+                JsonParser.parseString("\"Hello Mini Webserver\""));
+
+        assertNoContent(request(
+                "POST",
+                "/my-app/api/private/write",
+                "application/json",
+                "{\"profile\":{\"enabled\":true}}"));
+        assertTrue(Files.isRegularFile(
+                privateDataRoot.resolve("my-app/data/data.json")));
+        assertEquals(
+                JsonParser.parseString("{\"enabled\":true}"),
+                JsonParser.parseString(request(
+                        "GET",
+                        "/my-app/api/private/read?section=profile").bodyText()));
+
+        JsonObject shared = JsonParser.parseString(request(
+                "GET",
+                "/my-app/api/shared/readAll").bodyText()).getAsJsonObject();
+        assertEquals(1, shared.size());
+        assertEquals("Hello Mini Webserver", shared.get("start").getAsString());
     }
 
     @Test
@@ -690,6 +739,27 @@ class PersistenceHttpApiTest {
 
     private static String readText(Path file) throws IOException {
         return new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+    }
+
+    private static void copyDirectory(Path source, Path target) throws IOException {
+        Files.walkFileTree(source, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+                    throws IOException {
+                Files.createDirectories(target.resolve(source.relativize(directory)));
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
+                    throws IOException {
+                Files.copy(
+                        file,
+                        target.resolve(source.relativize(file)),
+                        StandardCopyOption.REPLACE_EXISTING);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private static byte[] readAll(InputStream input) throws IOException {

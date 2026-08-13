@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mini Web App Starter</title>
+    <link rel="stylesheet" href="assets/style.css">
+    <script src="/_shared/mini-api.js" defer></script>
+    <script src="assets/app.js" defer></script>
+</head>
+<body>
+    <header>
+        <p class="eyebrow">Mini Server starter</p>
+        <h1>Build a small web application</h1>
+        <p>Replace this demo with your application.</p>
+    </header>
+
+    <main>
+        <section class="hello-card" aria-labelledby="hello-title">
+            <div>
+                <p class="eyebrow">Shared starter data</p>
+                <h2 id="hello-title">MiniApi is loading…</h2>
+            </div>
+            <output id="hello-value" aria-live="polite">Reading the <code>start</code> Section</output>
+        </section>
+
+        <section class="demo" aria-labelledby="demo-title">
+            <div class="demo-copy">
+                <p class="eyebrow">Persistence demo</p>
+                <h2 id="demo-title">Try the public API</h2>
+                <p>
+                    Every operation explicitly selects one persistence scope. MiniApi derives this
+                    application's site from the browser URL and handles JSON transport.
+                </p>
+            </div>
+
+            <fieldset>
+                <legend>Selected scope</legend>
+                <label><input type="radio" name="scope" value="shared" checked> Shared</label>
+                <label><input type="radio" name="scope" value="private"> Private</label>
+            </fieldset>
+
+            <p class="scope-note">
+                Shared: <code>www/&lt;site&gt;/data/data.json</code><br>
+                Private: <code>%APPDATA%\MiniServerData\&lt;site&gt;\data\data.json</code><br>
+                Private means user-profile storage, not authentication or encryption.
+            </p>
+
+            <div class="section-field">
+                <label for="section-name">Section name</label>
+                <input id="section-name" value="demo" autocomplete="off">
+            </div>
+
+            <div class="actions" aria-label="MiniApi operations">
+                <button id="read" type="button">Read</button>
+                <button id="read-all" type="button">Read All</button>
+                <button id="write" type="button">Write Demo</button>
+                <button id="remove" type="button">Remove</button>
+                <button id="clear" class="danger" type="button">Clear</button>
+            </div>
+
+            <div class="result" aria-labelledby="result-title">
+                <strong id="result-title">Result</strong>
+                <span id="result-summary">Ready</span>
+                <pre id="result-value" aria-live="polite">Choose an operation.</pre>
+            </div>
+        </section>
+
+        <details>
+            <summary>MiniApi quick reference</summary>
+            <p>
+                Include <code>&lt;script src="/_shared/mini-api.js"&gt;&lt;/script&gt;</code>.
+                Operation comes before the mandatory scope. Pass native JavaScript values directly;
+                access persistence through MiniApi rather than requesting <code>data.json</code>.
+            </p>
+            <pre><code>MiniApi.read("section").shared()
+MiniApi.read("section").private()
+
+MiniApi.readAll().shared()
+MiniApi.readAll().private()
+
+MiniApi.write(data).shared()
+MiniApi.write(data).private()
+
+MiniApi.remove("section").shared()
+MiniApi.remove("section").private()
+
+MiniApi.clear().shared()
+MiniApi.clear().private()</code></pre>
+        </details>
+    </main>
+</body>
+</html>
