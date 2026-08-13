@@ -66,6 +66,25 @@ class StaticFileHandlerTest {
     }
 
     @Test
+    void redirectsDirectoryToCanonicalTrailingSlashAndPreservesQuery() throws Exception {
+        writeText("example/index.html", "<h1>Hello</h1>");
+        startServer(new StaticFileHandler(webRoot));
+
+        Response get = request("GET", "/example");
+        Response getWithQuery = request("GET", "/example?mode=test");
+        Response head = request("HEAD", "/example");
+
+        assertEquals(301, get.status);
+        assertEquals("/example/", get.header("location"));
+        assertEquals(0, get.body.length);
+        assertEquals(301, getWithQuery.status);
+        assertEquals("/example/?mode=test", getWithQuery.header("location"));
+        assertEquals(301, head.status);
+        assertEquals("/example/", head.header("location"));
+        assertEquals(0, head.body.length);
+    }
+
+    @Test
     void servesCssAndJavaScriptWithTextualContentTypes() throws Exception {
         writeText("example/assets/site.css", "body { color: navy; }");
         writeText("example/assets/app.js", "window.ready = true;");
@@ -149,11 +168,26 @@ class StaticFileHandlerTest {
 
         Response missing = request("GET", "/example/missing.txt");
         Response directory = request("GET", "/example/empty/");
+        Response directoryWithoutSlash = request("GET", "/example/empty");
 
         assertEquals(404, missing.status);
         assertFalse(missing.bodyText().contains(temporaryDirectory.toString()));
         assertEquals(404, directory.status);
         assertFalse(directory.bodyText().contains("private.txt"));
+        assertEquals(404, directoryWithoutSlash.status);
+        assertEquals(null, directoryWithoutSlash.header("location"));
+    }
+
+    @Test
+    void ordinaryStaticFileIsServedWithoutRedirect() throws Exception {
+        writeText("example/assets/app.js", "window.ready = true;");
+        startServer(new StaticFileHandler(webRoot));
+
+        Response response = request("GET", "/example/assets/app.js");
+
+        assertEquals(200, response.status);
+        assertEquals(null, response.header("location"));
+        assertEquals("window.ready = true;", response.bodyText());
     }
 
     @Test

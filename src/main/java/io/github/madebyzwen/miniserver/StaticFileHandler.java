@@ -26,6 +26,7 @@ final class StaticFileHandler implements HttpHandler {
             "Method Not Allowed".getBytes(StandardCharsets.UTF_8);
     private static final byte[] INTERNAL_ERROR_BODY =
             "Internal Server Error".getBytes(StandardCharsets.UTF_8);
+    private static final int PERMANENT_REDIRECT = 301;
     private static final int COPY_BUFFER_SIZE = 8192;
 
     private static final FileOpener DEFAULT_FILE_OPENER = new FileOpener() {
@@ -62,13 +63,18 @@ final class StaticFileHandler implements HttpHandler {
 
         boolean responseStarted = false;
         try {
-            Path resource = resolveResource(exchange.getRequestURI().getRawPath());
-            if (resource == null) {
+            ResolvedResource resolved = resolveResource(exchange.getRequestURI().getRawPath());
+            if (resolved == null) {
                 sendResponse(exchange, 404, NOT_FOUND_BODY, headRequest);
                 return;
             }
+            Path resource = resolved.file;
             if (!Files.isReadable(resource)) {
                 throw new AccessDeniedException("Static resource is not readable.");
+            }
+            if (resolved.directoryRedirect) {
+                sendDirectoryRedirect(exchange);
+                return;
             }
 
             long contentLength = Files.size(resource);
@@ -105,7 +111,7 @@ final class StaticFileHandler implements HttpHandler {
         }
     }
 
-    private Path resolveResource(String rawPath) throws IOException {
+    private ResolvedResource resolveResource(String rawPath) throws IOException {
         String decodedPath = UrlPathDecoder.decode(rawPath);
         if (decodedPath == null
                 || !decodedPath.startsWith("/")
@@ -143,7 +149,8 @@ final class StaticFileHandler implements HttpHandler {
 
         BasicFileAttributes attributes =
                 Files.readAttributes(realResource, BasicFileAttributes.class);
-        if (attributes.isDirectory()) {
+        boolean directory = attributes.isDirectory();
+        if (directory) {
             Path indexFile = realResource.resolve("index.html");
             if (!existsWithoutFollowingLinks(indexFile)) {
                 return null;
@@ -159,7 +166,23 @@ final class StaticFileHandler implements HttpHandler {
             attributes = Files.readAttributes(realResource, BasicFileAttributes.class);
         }
 
-        return attributes.isRegularFile() ? realResource : null;
+        return attributes.isRegularFile()
+                ? new ResolvedResource(realResource, directory && !rawPath.endsWith("/"))
+                : null;
+    }
+
+    private static void sendDirectoryRedirect(HttpExchange exchange) throws IOException {
+        String rawPath = exchange.getRequestURI().getRawPath();
+        String rawQuery = exchange.getRequestURI().getRawQuery();
+        String location = rawPath + "/";
+        if (rawQuery != null) {
+            location += "?" + rawQuery;
+        }
+
+        exchange.getResponseHeaders().set("Location", location);
+        exchange.getResponseHeaders().set("Content-Length", "0");
+        exchange.sendResponseHeaders(PERMANENT_REDIRECT, -1L);
+        exchange.close();
     }
 
     private static boolean existsWithoutFollowingLinks(Path path) throws IOException {
@@ -285,5 +308,16 @@ final class StaticFileHandler implements HttpHandler {
 
     interface FileOpener {
         InputStream open(Path file) throws IOException;
+    }
+
+    private static final class ResolvedResource {
+
+        private final Path file;
+        private final boolean directoryRedirect;
+
+        private ResolvedResource(Path file, boolean directoryRedirect) {
+            this.file = file;
+            this.directoryRedirect = directoryRedirect;
+        }
     }
 }
