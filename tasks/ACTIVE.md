@@ -1070,7 +1070,7 @@ Acceptance:
 
 ## T-010 — Implement Edge Browser Launch
 
-Status: Planned
+Status: Done
 
 Related requirements:
 

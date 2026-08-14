@@ -10,16 +10,17 @@ public final class MiniServer {
 
     public static void main(String[] args) {
         try {
-            StartupResult result = new MiniServerStartup().start();
+            StartupResult result = new MiniServerApplication(
+                    new MiniServerStartup(),
+                    new EdgeBrowserLauncher(),
+                    MiniServerApplication.V1_START_TARGET,
+                    System.out,
+                    System.err).start();
             if (result.isExistingInstance()) {
-                System.out.println(
-                        "Mini Server is already running locally on port " + result.getPort() + ".");
                 return;
             }
 
             final RunningMiniServer runningServer = result.getRunningServer();
-            System.out.println("Mini Server started on 127.0.0.1:" + result.getPort() + ".");
-
             Runtime.getRuntime().addShutdownHook(
                     new Thread(new Runnable() {
                         @Override
