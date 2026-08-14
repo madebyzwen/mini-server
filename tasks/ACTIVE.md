@@ -1241,7 +1241,7 @@ Acceptance:
 
 ## T-012 — Verify Java 8 Runtime Compatibility
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
