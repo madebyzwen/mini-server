@@ -8,12 +8,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -80,6 +82,11 @@ class MiniServerApplicationTest {
             connection.setConnectTimeout(500);
             connection.setReadTimeout(500);
             assertEquals(200, connection.getResponseCode());
+            try (InputStream responseBody = connection.getInputStream()) {
+                while (responseBody.read() != -1) {
+                    // Consume the readiness response before disconnecting.
+                }
+            }
             connection.disconnect();
         };
 
@@ -210,6 +217,27 @@ class MiniServerApplicationTest {
                 runtimeDirectory.resolve(MiniServerStartup.INSTANCE_STATE_FILE)));
         assertTrue(output.standardText().isEmpty());
         assertTrue(output.errorText().isEmpty());
+    }
+
+    @Test
+    void wrappedStartupCauseIsRetainedInOneLineConsoleDiagnostic() {
+        String internalPath = temporaryDirectory.resolve("restricted/web-root").toString();
+        AccessDeniedException cause = new AccessDeniedException(
+                internalPath,
+                null,
+                "access denied\nby the filesystem");
+        StartupException failure = new StartupException(
+                "The Mini Server web root cannot be accessed.",
+                cause);
+
+        String diagnostic = MiniServer.startupFailureMessage(failure);
+
+        assertTrue(diagnostic.contains("StartupException"));
+        assertTrue(diagnostic.contains("AccessDeniedException"));
+        assertTrue(diagnostic.contains(internalPath));
+        assertTrue(diagnostic.contains("access denied by the filesystem"));
+        assertFalse(diagnostic.contains("\n"));
+        assertFalse(diagnostic.contains("\r"));
     }
 
     private MiniServerApplication application(

@@ -36,8 +36,12 @@ public final class MiniServer {
                 runningServer.close();
             }
         } catch (StartupException exception) {
-            System.err.println("Mini Server could not start: " + exception.getMessage());
+            System.err.println(startupFailureMessage(exception));
             System.exit(1);
         }
+    }
+
+    static String startupFailureMessage(StartupException exception) {
+        return "Mini Server could not start: " + ConsoleDiagnostics.failureSummary(exception);
     }
 }

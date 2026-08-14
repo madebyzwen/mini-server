@@ -23,6 +23,7 @@ import java.net.Socket;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -610,6 +611,35 @@ class PersistenceHttpApiTest {
     }
 
     @Test
+    void wrappedPersistenceCauseIsDiagnosedButRemainsAbsentFromHttpResponse()
+            throws Exception {
+        String internalPath = temporaryDirectory.resolve("shared/secret-data.json").toString();
+        AccessDeniedException cause = new AccessDeniedException(
+                internalPath,
+                null,
+                "permission denied\nby the filesystem");
+        PersistenceException failure = new PersistenceException(
+                PersistenceException.Reason.IO_FAILURE,
+                "Persistence data could not be read.",
+                cause);
+        restartServer(resolver, new FailingReadStore(failure));
+
+        Response response = request("GET", "/example/api/shared/readAll");
+        String diagnostic = diagnosticText().trim();
+
+        assertPersistenceError(response, "Persistence read failed.");
+        assertFalse(response.bodyText().contains("AccessDeniedException"));
+        assertFalse(response.bodyText().contains(internalPath));
+        assertFalse(response.bodyText().contains("permission denied"));
+        assertTrue(diagnostic.contains("PersistenceException"));
+        assertTrue(diagnostic.contains("AccessDeniedException"));
+        assertTrue(diagnostic.contains(internalPath));
+        assertTrue(diagnostic.contains("permission denied by the filesystem"));
+        assertFalse(diagnostic.contains("\n"));
+        assertFalse(diagnostic.contains("\r"));
+    }
+
+    @Test
     @Timeout(3)
     void writeLockTimeoutMapsToWriteFailedWithoutChangingData() throws Exception {
         ResolvedPersistenceTarget target = resolved(PersistenceScope.SHARED, "write");
@@ -668,7 +698,7 @@ class PersistenceHttpApiTest {
 
     private void restartServer(
             PersistenceTargetResolver targetResolver,
-            JsonPersistenceStore persistenceStore) throws IOException {
+            PersistenceStore persistenceStore) throws IOException {
         server.stop(0);
         server = HttpServer.create(
                 new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0),
@@ -808,6 +838,42 @@ class PersistenceHttpApiTest {
             output.write(buffer, 0, read);
         }
         return output.toByteArray();
+    }
+
+    private static final class FailingReadStore extends PersistenceStore {
+
+        private final PersistenceException failure;
+
+        private FailingReadStore(PersistenceException failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public JsonElement read(ResolvedPersistenceTarget target, String section)
+                throws PersistenceException {
+            throw failure;
+        }
+
+        @Override
+        public JsonObject readAll(ResolvedPersistenceTarget target)
+                throws PersistenceException {
+            throw failure;
+        }
+
+        @Override
+        public void write(ResolvedPersistenceTarget target, JsonObject sections) {
+            throw new AssertionError("The test store does not support writes.");
+        }
+
+        @Override
+        public void remove(ResolvedPersistenceTarget target, String section) {
+            throw new AssertionError("The test store does not support removal.");
+        }
+
+        @Override
+        public void clear(ResolvedPersistenceTarget target) {
+            throw new AssertionError("The test store does not support clear.");
+        }
     }
 
     private static final class RequestExpectation {

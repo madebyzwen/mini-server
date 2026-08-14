@@ -34,7 +34,7 @@ import java.util.concurrent.locks.LockSupport;
 /**
  * Stores JSON Sections in a server-resolved persistence target.
  */
-final class JsonPersistenceStore {
+final class JsonPersistenceStore extends PersistenceStore {
 
     private static final Gson GSON = new GsonBuilder().serializeNulls().create();
     private static final long DEFAULT_LOCK_TIMEOUT_MILLIS = 1000L;

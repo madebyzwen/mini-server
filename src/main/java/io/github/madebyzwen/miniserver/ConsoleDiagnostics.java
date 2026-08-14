@@ -21,8 +21,39 @@ final class ConsoleDiagnostics {
     }
 
     static String failureSummary(Throwable failure) {
-        String type = failure == null ? "Unknown failure" : failure.getClass().getSimpleName();
-        if (failure == null || failure.getMessage() == null) {
+        String summary = exceptionSummary(failure, true);
+        Throwable cause = relevantCause(failure);
+        if (cause == null) {
+            return summary;
+        }
+
+        boolean includeCauseMessage = !(failure instanceof PersistenceException)
+                || ((PersistenceException) failure).getReason()
+                != PersistenceException.Reason.INVALID_DATA;
+        String causeSummary = exceptionSummary(cause, includeCauseMessage);
+        return summary.contains(causeSummary)
+                ? summary
+                : summary + "; caused by " + causeSummary;
+    }
+
+    private static Throwable relevantCause(Throwable failure) {
+        if (failure instanceof PersistenceException || failure instanceof StartupException) {
+            Throwable cause = failure.getCause();
+            return cause == failure ? null : cause;
+        }
+        return null;
+    }
+
+    private static String exceptionSummary(Throwable failure, boolean includeMessage) {
+        if (failure == null) {
+            return "Unknown failure";
+        }
+
+        String type = failure.getClass().getSimpleName();
+        if (type.isEmpty()) {
+            type = failure.getClass().getName();
+        }
+        if (!includeMessage || failure.getMessage() == null) {
             return type;
         }
 

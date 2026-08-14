@@ -42,12 +42,12 @@ final class PersistenceApiHandler implements HttpHandler {
     private static final String CLEAR = "clear";
 
     private final PersistenceTargetResolver targetResolver;
-    private final JsonPersistenceStore persistenceStore;
+    private final PersistenceStore persistenceStore;
     private final ConsoleDiagnostics diagnostics;
 
     PersistenceApiHandler(
             PersistenceTargetResolver targetResolver,
-            JsonPersistenceStore persistenceStore) {
+            PersistenceStore persistenceStore) {
         this(
                 targetResolver,
                 persistenceStore,
@@ -56,7 +56,7 @@ final class PersistenceApiHandler implements HttpHandler {
 
     PersistenceApiHandler(
             PersistenceTargetResolver targetResolver,
-            JsonPersistenceStore persistenceStore,
+            PersistenceStore persistenceStore,
             ConsoleDiagnostics diagnostics) {
         this.targetResolver = targetResolver;
         this.persistenceStore = persistenceStore;
