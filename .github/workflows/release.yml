@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Semantic release type
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: Build and verify without creating a tag or GitHub Release
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mini-server-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Require main branch
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Release workflow must be dispatched from main." >&2
+            exit 1
+          fi
+
+      - name: Check out repository and tags
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Calculate semantic release version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          calculation=$(bash scripts/calculate-release-version.sh "$RELEASE_TYPE")
+          while IFS='=' read -r key value; do
+            case "$key" in
+              previous_version|version|tag)
+                echo "$key=$value" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "Unexpected version output: $key" >&2
+                exit 1
+                ;;
+            esac
+          done <<< "$calculation"
+
+          tag=$(printf '%s\n' "$calculation" | sed -n 's/^tag=//p')
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            echo "Calculated release tag already exists: $tag" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$calculation"
+
+      - name: Set temporary Maven release version
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: >-
+          mvn -B org.codehaus.mojo:versions-maven-plugin:2.21.0:set
+          -DnewVersion="$RELEASE_VERSION"
+          -DgenerateBackupPoms=false
+          -DupdateBuildOutputTimestampPolicy=never
+
+      - name: Verify temporary Maven version
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          actual=$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout)
+          if [[ "$actual" != "$RELEASE_VERSION" ]]; then
+            echo "Maven project version is $actual, expected $RELEASE_VERSION." >&2
+            exit 1
+          fi
+
+      - name: Run Java tests
+        run: mvn -B clean test
+
+      - name: Run MiniApi JavaScript tests
+        run: node src/test/js/mini-api.test.js
+
+      - name: Build release distribution
+        run: mvn -B clean package
+
+      - name: Verify release distribution and checksum
+        id: distribution
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          zip="target/mini-server-$RELEASE_VERSION.zip"
+          bash scripts/verify-distribution.sh "$zip" "$RELEASE_VERSION"
+
+          zip_name=$(basename "$zip")
+          (
+            cd target
+            sha256sum "$zip_name" > "$zip_name.sha256"
+          )
+
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "checksum=$zip.sha256" >> "$GITHUB_OUTPUT"
+          echo "name=${zip_name%.zip}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified release build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.distribution.outputs.name }}
+          path: |
+            ${{ steps.distribution.outputs.zip }}
+            ${{ steps.distribution.outputs.checksum }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_ZIP: ${{ steps.distribution.outputs.zip }}
+          RELEASE_CHECKSUM: ${{ steps.distribution.outputs.checksum }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          "$RELEASE_ZIP"
+          "$RELEASE_CHECKSUM"
+          --target "$GITHUB_SHA"
+          --title "Mini Server $RELEASE_TAG"
+          --generate-notes

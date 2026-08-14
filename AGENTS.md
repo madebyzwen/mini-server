@@ -158,6 +158,18 @@ Do not record unverified guesses as established causes.
 - Commit messages should describe the purpose of the change.
 - Do not create releases or version tags unless explicitly requested.
 
+## Release Workflow
+
+- If the user asks to create or publish a release and explicitly specifies patch, minor, or major, use that release type.
+- If the user asks to create or publish a release without specifying its type, ask exactly one clarifying question: "Which release type should be created: Patch, Minor, or Major?"
+- Do not infer the release type from recent changes and do not choose it automatically.
+- Once the release type is known, dispatch `.github/workflows/release.yml` on `main` with the corresponding `release_type`.
+- Real user-requested publication uses `dry_run=false`; do not ask the user about dry-run mode during normal publication.
+- Do not manually edit the release version, locally create the authoritative release ZIP, create the tag, or manually upload release assets as a substitute for the workflow.
+- Monitor the GitHub Actions run and do not report success until it completes successfully and the GitHub Release exists.
+- If the workflow fails, report the failure and relevant workflow/job information. Do not silently publish manually.
+- After success, report the previous released version, release type, new version, successful test/build status, release artifact name, and GitHub Release/tag.
+
 ## Testing
 
 - Run the tests relevant to a change before considering the task complete.

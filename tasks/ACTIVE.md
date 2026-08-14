@@ -1343,6 +1343,43 @@ Acceptance:
 
 ---
 
+## T-014.2 — Add GitHub CI and Automated Semantic Release Workflow
+
+Status: Done
+
+Related requirements:
+
+- REQ-005
+- REQ-008
+
+Description:
+
+Add GitHub Actions workflows that continuously verify the complete portable distribution and publish explicitly requested semantic releases from reviewed `main` commits.
+
+Release versions are derived from strict semantic Git tags. The release build temporarily applies the calculated non-SNAPSHOT Maven version without committing it, validates the GitHub-built distribution, and publishes only after all checks succeed.
+
+Acceptance:
+
+- A build workflow runs for pushes to `main`, pushes to `review/**`, and manual dispatches.
+- The build workflow runs the Java and MiniApi test suites and builds through Maven.
+- The complete validated distribution ZIP is uploaded as the useful CI artifact.
+- A release workflow requires an explicit `patch`, `minor`, or `major` input.
+- The highest strict semantic release tag determines the next version.
+- With no semantic release tag, a major release calculates `v1.0.0`.
+- The release build uses the calculated non-SNAPSHOT Maven version and matching distribution name.
+- Tests and distribution validation finish before publication.
+- A failed test, build, or validation cannot publish a release.
+- Publication is refused unless the workflow is dispatched from `main`.
+- Release workflow concurrency prevents two publication runs from racing.
+- The semantic tag and GitHub Release target the exact built `main` commit.
+- The complete GitHub-built distribution ZIP and SHA-256 checksum are attached to the release.
+- No automated Maven-version commit is created or pushed.
+- A dry run performs all calculations and verification but creates no tag or GitHub Release.
+- Codex release interaction is defined in `AGENTS.md`.
+- Maintainer release documentation exists in `docs/RELEASE.md`.
+
+---
+
 ## T-014 — Verify Initial Release Scope
 
 Status: Planned
@@ -1392,6 +1429,7 @@ T-011
 T-012
 T-013
 T-014.1
+T-014.2
 T-014
 
 The order may be adjusted when technically useful, but requirement dependencies must remain respected.

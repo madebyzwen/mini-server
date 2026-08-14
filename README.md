@@ -51,7 +51,7 @@ mvn clean package
 node src/test/js/mini-api.test.js
 ```
 
-The Node command runs the dependency-free MiniApi tests when Node.js is available. See `tests/README.md` and `AGENTS.md` for testing and repository workflow details.
+The Node command runs the dependency-free MiniApi tests when Node.js is available. See `tests/README.md` and `AGENTS.md` for testing and repository workflow details. Maintainers should follow `docs/RELEASE.md` for CI and semantic release procedures.
 
 ---
 
@@ -85,4 +85,4 @@ Jede Persistenzoperation wählt ausdrücklich `.private()` oder `.shared()`. Gem
 
 ### Entwicklung
 
-Die maßgeblichen Anforderungen und Architekturunterlagen befinden sich in `requirements/`, `docs/ARCHITECTURE.md` und `docs/DECISIONS.md`. Die Build- und Testbefehle entsprechen dem englischen Abschnitt „Development“.
+Die maßgeblichen Anforderungen und Architekturunterlagen befinden sich in `requirements/`, `docs/ARCHITECTURE.md` und `docs/DECISIONS.md`. Die Build- und Testbefehle entsprechen dem englischen Abschnitt „Development“. Hinweise für Maintainer zu CI und semantischen Releases stehen in `docs/RELEASE.md`.
