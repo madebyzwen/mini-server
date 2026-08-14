@@ -141,7 +141,10 @@ public final class MiniServerStartup {
         } catch (StartupException exception) {
             throw exception;
         } catch (IOException | RuntimeException exception) {
-            throw new StartupException("Mini Server startup failed.", exception);
+            throw new StartupException(
+                    "Mini Server startup failed: "
+                            + ConsoleDiagnostics.failureSummary(exception),
+                    exception);
         } finally {
             if (httpServer != null) {
                 httpServer.stop(0);

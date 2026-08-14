@@ -43,12 +43,24 @@ final class PersistenceApiHandler implements HttpHandler {
 
     private final PersistenceTargetResolver targetResolver;
     private final JsonPersistenceStore persistenceStore;
+    private final ConsoleDiagnostics diagnostics;
 
     PersistenceApiHandler(
             PersistenceTargetResolver targetResolver,
             JsonPersistenceStore persistenceStore) {
+        this(
+                targetResolver,
+                persistenceStore,
+                new ConsoleDiagnostics(System.err));
+    }
+
+    PersistenceApiHandler(
+            PersistenceTargetResolver targetResolver,
+            JsonPersistenceStore persistenceStore,
+            ConsoleDiagnostics diagnostics) {
         this.targetResolver = targetResolver;
         this.persistenceStore = persistenceStore;
+        this.diagnostics = diagnostics;
     }
 
     @Override
@@ -59,6 +71,7 @@ final class PersistenceApiHandler implements HttpHandler {
         } catch (ApiProblem problem) {
             response = errorResponse(problem);
         } catch (IOException | RuntimeException exception) {
+            diagnostics.report("API request", exception);
             response = errorResponse(ApiProblem.internalError());
         } finally {
             closeRequestBody(exchange);
@@ -78,6 +91,7 @@ final class PersistenceApiHandler implements HttpHandler {
         try {
             resolved = targetResolver.resolve(rawPath);
         } catch (IOException exception) {
+            diagnostics.report("persistence target resolution", exception);
             throw ApiProblem.persistenceError(
                     isModifyingOperation(route.operation)
                             ? "Write failed"
@@ -113,6 +127,7 @@ final class PersistenceApiHandler implements HttpHandler {
         } catch (SectionNotFoundException exception) {
             throw ApiProblem.sectionNotFound();
         } catch (PersistenceException exception) {
+            diagnostics.report("persistence operation", exception);
             throw persistenceProblem(exception, route.operation);
         }
     }

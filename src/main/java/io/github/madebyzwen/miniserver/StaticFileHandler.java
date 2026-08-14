@@ -38,17 +38,26 @@ final class StaticFileHandler implements HttpHandler {
 
     private final Path webRoot;
     private final FileOpener fileOpener;
+    private final ConsoleDiagnostics diagnostics;
 
     StaticFileHandler(Path webRoot) throws IOException {
-        this(webRoot, DEFAULT_FILE_OPENER);
+        this(webRoot, DEFAULT_FILE_OPENER, new ConsoleDiagnostics(System.err));
     }
 
     StaticFileHandler(Path webRoot, FileOpener fileOpener) throws IOException {
+        this(webRoot, fileOpener, new ConsoleDiagnostics(System.err));
+    }
+
+    StaticFileHandler(
+            Path webRoot,
+            FileOpener fileOpener,
+            ConsoleDiagnostics diagnostics) throws IOException {
         if (!Files.isDirectory(webRoot) || !Files.isReadable(webRoot)) {
             throw new IOException("The Mini Server web root is not an accessible directory.");
         }
         this.webRoot = webRoot.toRealPath();
         this.fileOpener = fileOpener;
+        this.diagnostics = diagnostics;
     }
 
     @Override
@@ -97,12 +106,14 @@ final class StaticFileHandler implements HttpHandler {
                 }
             }
         } catch (IOException exception) {
+            diagnostics.report("static-file request", exception);
             if (!responseStarted) {
                 sendResponse(exchange, 500, INTERNAL_ERROR_BODY, headRequest);
             } else {
                 exchange.close();
             }
         } catch (RuntimeException exception) {
+            diagnostics.report("static-file request", exception);
             if (!responseStarted) {
                 sendResponse(exchange, 500, INTERNAL_ERROR_BODY, headRequest);
             } else {

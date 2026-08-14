@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -295,13 +296,20 @@ class StaticFileHandlerTest {
         StaticFileHandler.FileOpener failingOpener = file -> {
             throw new IOException("deliberate read failure at " + file);
         };
-        startServer(new StaticFileHandler(webRoot, failingOpener));
+        ByteArrayOutputStream diagnosticBytes = new ByteArrayOutputStream();
+        ConsoleDiagnostics diagnostics = new ConsoleDiagnostics(
+                new PrintStream(diagnosticBytes, true, "UTF-8"));
+        startServer(new StaticFileHandler(webRoot, failingOpener, diagnostics));
 
         Response response = request("GET", "/example/file.txt");
+        String diagnostic = new String(diagnosticBytes.toByteArray(), StandardCharsets.UTF_8);
 
         assertEquals(500, response.status);
         assertEquals("Internal Server Error", response.bodyText());
         assertFalse(response.bodyText().contains(temporaryDirectory.toString()));
+        assertTrue(diagnostic.contains("static-file request"));
+        assertTrue(diagnostic.contains("IOException"));
+        assertTrue(diagnostic.contains(temporaryDirectory.toString()));
     }
 
     @Test

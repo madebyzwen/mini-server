@@ -22,6 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MiniServerApplicationTest {
@@ -176,6 +178,38 @@ class MiniServerApplicationTest {
         assertTrue(first.getRunningServer().isRunning());
         assertListenerReachable(first.getPort());
         assertTrue(repeatedOutput.errorText().contains(expectedUrl));
+    }
+
+    @Test
+    void fatalStartupFailureProvidesDetailAndNeverLaunchesBrowser() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("startup-failure");
+        String failureDetail = "deliberate listener failure at " + temporaryDirectory;
+        MiniServerStartup.ServerFactory failingFactory = address -> {
+            throw new IOException(failureDetail);
+        };
+        RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
+        RecordingOutput output = new RecordingOutput();
+        MiniServerApplication application = new MiniServerApplication(
+                new MiniServerStartup(
+                        runtimeDirectory,
+                        webRoot,
+                        SETTINGS,
+                        failingFactory,
+                        NO_OBSERVER),
+                browserLauncher,
+                MiniServerApplication.V1_START_TARGET,
+                output.standard,
+                output.error);
+
+        StartupException failure = assertThrows(StartupException.class, application::start);
+
+        assertTrue(failure.getMessage().contains("IOException"));
+        assertTrue(failure.getMessage().contains(failureDetail));
+        assertTrue(browserLauncher.urls.isEmpty());
+        assertFalse(Files.exists(
+                runtimeDirectory.resolve(MiniServerStartup.INSTANCE_STATE_FILE)));
+        assertTrue(output.standardText().isEmpty());
+        assertTrue(output.errorText().isEmpty());
     }
 
     private MiniServerApplication application(

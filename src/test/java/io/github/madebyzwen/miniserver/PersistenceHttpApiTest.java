@@ -16,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -53,6 +54,8 @@ class PersistenceHttpApiTest {
     private Path privateDataRoot;
     private PersistenceTargetResolver resolver;
     private JsonPersistenceStore store;
+    private ByteArrayOutputStream diagnosticBytes;
+    private ConsoleDiagnostics diagnostics;
     private HttpServer server;
 
     @BeforeEach
@@ -63,6 +66,8 @@ class PersistenceHttpApiTest {
         Files.createDirectories(webRoot.resolve("_shared"));
         resolver = new PersistenceTargetResolver(webRoot, privateDataRoot);
         store = new JsonPersistenceStore(75L, 5L);
+        diagnosticBytes = new ByteArrayOutputStream();
+        diagnostics = new ConsoleDiagnostics(new PrintStream(diagnosticBytes, true, "UTF-8"));
 
         server = HttpServer.create(
                 new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0),
@@ -70,7 +75,7 @@ class PersistenceHttpApiTest {
         server.createContext(
                 "/",
                 new RootRequestRouter(
-                        new PersistenceApiHandler(resolver, store),
+                        new PersistenceApiHandler(resolver, store, diagnostics),
                         new StaticFileHandler(webRoot)));
         server.start();
     }
@@ -579,6 +584,32 @@ class PersistenceHttpApiTest {
     }
 
     @Test
+    void unexpectedApiFailureIsDiagnosedButBrowserResponseHidesInternalDetails()
+            throws Exception {
+        String internalPath = temporaryDirectory.resolve("private/secret-location").toString();
+        PersistenceTargetResolver failingResolver = new PersistenceTargetResolver(
+                webRoot,
+                new PersistenceTargetResolver.PrivateDataRootProvider() {
+                    @Override
+                    public Path resolve() {
+                        throw new IllegalStateException(
+                                "Unexpected private root failure at " + internalPath);
+                    }
+                });
+        restartServer(failingResolver, store);
+
+        Response response = request("GET", "/example/api/private/readAll");
+        String diagnostic = diagnosticText();
+
+        assertError(response, 500, "INTERNAL_ERROR");
+        assertFalse(response.bodyText().contains(internalPath));
+        assertFalse(response.bodyText().contains("IllegalStateException"));
+        assertTrue(diagnostic.contains("API request"));
+        assertTrue(diagnostic.contains("IllegalStateException"));
+        assertTrue(diagnostic.contains(internalPath));
+    }
+
+    @Test
     @Timeout(3)
     void writeLockTimeoutMapsToWriteFailedWithoutChangingData() throws Exception {
         ResolvedPersistenceTarget target = resolved(PersistenceScope.SHARED, "write");
@@ -645,9 +676,16 @@ class PersistenceHttpApiTest {
         server.createContext(
                 "/",
                 new RootRequestRouter(
-                        new PersistenceApiHandler(targetResolver, persistenceStore),
+                        new PersistenceApiHandler(
+                                targetResolver,
+                                persistenceStore,
+                                diagnostics),
                         new StaticFileHandler(webRoot)));
         server.start();
+    }
+
+    private String diagnosticText() {
+        return new String(diagnosticBytes.toByteArray(), StandardCharsets.UTF_8);
     }
 
     private ResolvedPersistenceTarget resolved(PersistenceScope scope, String operation)

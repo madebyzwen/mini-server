@@ -1215,7 +1215,7 @@ Acceptance:
 
 ## T-011 — Implement Error Handling and Diagnostics
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
