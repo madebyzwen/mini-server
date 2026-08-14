@@ -48,14 +48,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
                 <version>3.8.0</version>
-                <configuration>
-                    <descriptors>
-                        <descriptor>src/assembly/miniweb-template.xml</descriptor>
-                    </descriptors>
-                    <finalName>miniweb-template</finalName>
-                    <appendAssemblyId>false</appendAssemblyId>
-                    <attach>false</attach>
-                </configuration>
                 <executions>
                     <execution>
                         <id>package-miniweb-template</id>
@@ -63,6 +55,29 @@
                         <goals>
                             <goal>single</goal>
                         </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/miniweb-template.xml</descriptor>
+                            </descriptors>
+                            <finalName>miniweb-template</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>package-mini-server-distribution</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/mini-server-distribution.xml</descriptor>
+                            </descriptors>
+                            <finalName>${project.build.finalName}</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <attach>false</attach>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

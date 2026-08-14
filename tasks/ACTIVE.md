@@ -1309,6 +1309,40 @@ Acceptance:
 
 ---
 
+## T-014.1 — Assemble v1.0 Distribution and Windows Launcher
+
+Status: Done
+
+Related requirements:
+
+- REQ-005
+- REQ-006
+- REQ-007
+- REQ-008
+
+Description:
+
+Assemble the portable v1.0 runtime distribution through the authoritative Maven build and provide its one-action Windows launcher.
+
+The distribution preserves the thin-JAR runtime model and contains the application JAR, Maven-resolved runtime dependencies, maintained web root, reusable template archive, Windows launcher, and concise end-user documentation.
+
+Acceptance:
+
+- `mvn clean package` produces one complete runtime ZIP with one top-level distribution directory.
+- The application artifact is packaged as `mini-server.jar`.
+- All Maven runtime dependencies, and no test-only dependencies, are packaged below `lib/`.
+- The maintained `www/` web root, example application, and shared MiniApi library are packaged unchanged.
+- The Maven-produced `miniweb-template.zip` is included at the distribution root without packaging top-level `template/` as runtime content.
+- `start.bat` locates the distribution relative to itself and launches the Java entry point with `mini-server.jar;lib\*` on the classpath.
+- The launcher supports paths with spaces and normal `pushd`-supported local, mapped, and UNC locations.
+- The launcher uses `java.exe`, preserves console diagnostics, and reports a missing Java runtime clearly.
+- Port allocation, browser launch, and single-instance coordination remain responsibilities of the Java application.
+- The distribution contains no runtime coordination state or private persistence from a build/test environment.
+- `README.txt` explains portable installation, normal startup, browser behavior, process lifetime, templates, and persistence locations.
+- The extracted distribution starts and serves the example, shared MiniApi resource, protected persistence behavior, JSON API, and a newly extracted template site.
+
+---
+
 ## T-014 — Verify Initial Release Scope
 
 Status: Planned
@@ -1357,6 +1391,7 @@ T-010
 T-011
 T-012
 T-013
+T-014.1
 T-014
 
 The order may be adjusted when technically useful, but requirement dependencies must remain respected.
