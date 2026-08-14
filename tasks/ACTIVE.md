@@ -1266,7 +1266,7 @@ Acceptance:
 
 ## T-013 — Add Automated Tests
 
-Status: Planned
+Status: Done
 
 Related requirements:
 

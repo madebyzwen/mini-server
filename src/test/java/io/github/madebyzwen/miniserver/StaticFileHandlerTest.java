@@ -235,6 +235,29 @@ class StaticFileHandlerTest {
     }
 
     @Test
+    void craftedPathsCannotCrossFromOneApplicationNamespaceIntoAnother() throws Exception {
+        writeText("first/index.html", "first application");
+        String secondSiteSecret = "second-site-secret";
+        writeText("second/private.txt", secondSiteSecret);
+        startServer(new StaticFileHandler(webRoot));
+
+        List<String> crossSiteTargets = Arrays.asList(
+                "/first/../second/private.txt",
+                "/first/%2e%2e/second/private.txt",
+                "/first/%2e%2e%2fsecond/private.txt",
+                "/first/%2e%2e%5csecond%5cprivate.txt");
+
+        for (String target : crossSiteTargets) {
+            Response response = request("GET", target);
+            assertNotEquals(200, response.status, target);
+            assertFalse(response.bodyText().contains(secondSiteSecret), target);
+        }
+
+        assertEquals("first application", request("GET", "/first/").bodyText());
+        assertEquals(secondSiteSecret, request("GET", "/second/private.txt").bodyText());
+    }
+
+    @Test
     void absoluteAndMalformedPathAttemptsFailSafely() throws Exception {
         startServer(new StaticFileHandler(webRoot));
 

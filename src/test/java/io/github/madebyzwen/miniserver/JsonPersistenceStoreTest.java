@@ -21,6 +21,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -365,6 +371,111 @@ class JsonPersistenceStoreTest {
     }
 
     @Test
+    @Timeout(3)
+    void competingWriteLockAlsoBoundsRemoveAndClearWithoutChangingData() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.SHARED, "remove");
+        store.write(target, section("preserved", "before"));
+        String before = readText(target.getDataFile());
+        JsonPersistenceStore shortTimeoutStore = new JsonPersistenceStore(60L, 5L);
+
+        try (FileChannel channel = FileChannel.open(
+                store.lockFileFor(target),
+                StandardOpenOption.WRITE);
+             FileLock ignored = channel.lock()) {
+            PersistenceException removeFailure = assertThrows(
+                    PersistenceException.class,
+                    () -> shortTimeoutStore.remove(target, "preserved"));
+            assertEquals(
+                    PersistenceException.Reason.WRITE_LOCK_TIMEOUT,
+                    removeFailure.getReason());
+            assertEquals("Write failed", removeFailure.getMessage());
+            assertEquals(before, readText(target.getDataFile()));
+        }
+
+        try (FileChannel channel = FileChannel.open(
+                store.lockFileFor(target),
+                StandardOpenOption.WRITE);
+             FileLock ignored = channel.lock()) {
+            PersistenceException clearFailure = assertThrows(
+                    PersistenceException.class,
+                    () -> shortTimeoutStore.clear(target));
+            assertEquals(
+                    PersistenceException.Reason.WRITE_LOCK_TIMEOUT,
+                    clearFailure.getReason());
+            assertEquals("Write failed", clearFailure.getMessage());
+            assertEquals(before, readText(target.getDataFile()));
+        }
+    }
+
+    @Test
+    @Timeout(2)
+    void lockContentionOnOneTargetDoesNotBlockAnUnrelatedTarget() throws Exception {
+        Files.createDirectories(webRoot.resolve("dashboard"));
+        ResolvedPersistenceTarget example = target(PersistenceScope.SHARED, "write");
+        ResolvedPersistenceTarget dashboard = resolver()
+                .resolve("/dashboard/api/shared/write")
+                .get();
+        store.write(example, section("example", true));
+
+        try (FileChannel channel = FileChannel.open(
+                store.lockFileFor(example),
+                StandardOpenOption.WRITE);
+             FileLock ignored = channel.lock()) {
+            store.write(dashboard, section("dashboard", true));
+        }
+
+        assertEquals(section("example", true), store.readAll(example));
+        assertEquals(section("dashboard", true), store.readAll(dashboard));
+        assertFalse(store.lockFileFor(example).equals(store.lockFileFor(dashboard)));
+    }
+
+    @Test
+    @Timeout(10)
+    void concurrentReadersObserveOnlyCompleteObjectsDuringAtomicWrites() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.SHARED, "write");
+        JsonObject first = largeDocument("first", 'a');
+        JsonObject second = largeDocument("second", 'b');
+        store.write(target, first);
+
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicBoolean writerFinished = new AtomicBoolean(false);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Void> writer = executor.submit(() -> {
+                start.await();
+                try {
+                    for (int index = 0; index < 40; index++) {
+                        store.write(target, index % 2 == 0 ? second : first);
+                    }
+                } finally {
+                    writerFinished.set(true);
+                }
+                return null;
+            });
+            Future<Integer> reader = executor.submit(() -> {
+                start.await();
+                int completeReads = 0;
+                do {
+                    JsonObject observed = store.readAll(target);
+                    if (!first.equals(observed) && !second.equals(observed)) {
+                        throw new AssertionError(
+                                "A reader observed a partial persistence document: " + observed);
+                    }
+                    completeReads++;
+                } while (!writerFinished.get() || completeReads < 40);
+                return completeReads;
+            });
+
+            start.countDown();
+            writer.get(8L, TimeUnit.SECONDS);
+            assertTrue(reader.get(8L, TimeUnit.SECONDS) >= 40);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(2L, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
     void everySuccessfulModificationReleasesItsPersistenceLock() throws Exception {
         ResolvedPersistenceTarget target = target(PersistenceScope.SHARED, "write");
 
@@ -471,6 +582,17 @@ class JsonPersistenceStoreTest {
         JsonObject sections = new JsonObject();
         sections.addProperty(name, value);
         return sections;
+    }
+
+    private static JsonObject largeDocument(String generation, char fill) {
+        char[] payloadCharacters = new char[64 * 1024];
+        Arrays.fill(payloadCharacters, fill);
+        JsonObject value = new JsonObject();
+        value.addProperty("generation", generation);
+        value.addProperty("payload", new String(payloadCharacters));
+        JsonObject document = new JsonObject();
+        document.add("state", value);
+        return document;
     }
 
     private void assertLockIsAvailable(ResolvedPersistenceTarget target) throws Exception {

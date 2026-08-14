@@ -422,21 +422,38 @@ class MiniServerStartupTest {
     }
 
     @Test
-    void independentRuntimeContextsCanRunIndependentServers() throws Exception {
-        Path firstRuntime = temporaryDirectory.resolve("context-one");
-        Path secondRuntime = temporaryDirectory.resolve("context-two");
+    void independentRuntimeContextsCanUseTheSameSharedInstallation() throws Exception {
+        Path sharedInstallation = temporaryDirectory.resolve("shared-installation");
+        Path sharedWebRoot = sharedInstallation.resolve("www");
+        Files.createDirectories(sharedWebRoot);
+        Path firstRuntime = temporaryDirectory.resolve("computer-one/runtime");
+        Path secondRuntime = temporaryDirectory.resolve("computer-two/runtime");
 
-        StartupResult first = own(
-                startup(firstRuntime, NORMAL_SETTINGS, new RecordingServerFactory()).start());
-        StartupResult second = own(
-                startup(secondRuntime, NORMAL_SETTINGS, new RecordingServerFactory()).start());
+        StartupResult first = own(new MiniServerStartup(
+                firstRuntime,
+                sharedWebRoot,
+                NORMAL_SETTINGS,
+                new RecordingServerFactory(),
+                NO_OBSERVER).start());
+        StartupResult second = own(new MiniServerStartup(
+                secondRuntime,
+                sharedWebRoot,
+                NORMAL_SETTINGS,
+                new RecordingServerFactory(),
+                NO_OBSERVER).start());
 
         assertTrue(first.isNewInstance());
         assertTrue(second.isNewInstance());
+        assertNotEquals(first.getPort(), second.getPort());
         assertEquals(first.getPort(), new RuntimeStateStore(firstRuntime).readPort().getAsInt());
         assertEquals(second.getPort(), new RuntimeStateStore(secondRuntime).readPort().getAsInt());
         assertFalse(canAcquire(firstRuntime.resolve(MiniServerStartup.INSTANCE_LOCK_FILE)));
         assertFalse(canAcquire(secondRuntime.resolve(MiniServerStartup.INSTANCE_LOCK_FILE)));
+        assertListenerReachable(first.getPort());
+        assertListenerReachable(second.getPort());
+        assertFalse(firstRuntime.startsWith(sharedInstallation));
+        assertFalse(secondRuntime.startsWith(sharedInstallation));
+        assertFalse(Files.exists(sharedInstallation.resolve("runtime")));
     }
 
     @Test
