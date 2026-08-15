@@ -87,6 +87,10 @@ Allowing the operating system to select an available port avoids unnecessary por
 
 ## D-004 — Browser Launch Uses the Assigned Port
 
+Status: Superseded
+
+Superseded by: D-025 — Windows Default Browser Launch
+
 ### Decision
 
 After the server has started successfully and the operating system has assigned a port, the launcher should open Microsoft Edge with the corresponding local URL.
@@ -1313,11 +1317,11 @@ A startup attempt obtains startup.lock before it evaluates or changes local inst
 
 If no active process owns instance.lock, the new process invalidates stale state, obtains and retains instance.lock, starts the server on 127.0.0.1 using port 0, obtains the assigned port, confirms readiness, and publishes that port in instance.json.
 
-If another local process owns instance.lock, the startup attempt does not start another server. It obtains the active port from valid local runtime state, opens the existing local server URL, and exits.
+If another local process owns instance.lock, the startup attempt does not start another server. It obtains the active port from valid local runtime state, evaluates the current configured application URLs according to D-026, asks Windows to open them according to D-025, and exits.
 
 Startup races and lock acquisition use bounded, deterministic waits. A state file alone is never proof that an instance is active. Failure to obtain valid state for an actively locked instance fails cleanly rather than starting a competing local process.
 
-The Mini Server process remains independent of Microsoft Edge. Graceful local
+The Mini Server process remains independent of the Windows-selected browser. Graceful local
 shutdown uses the authenticated internal route defined by D-024; no anonymous
 application shutdown operation is provided.
 
@@ -1602,7 +1606,7 @@ Shared persistence may be written by server processes on different computers, an
 ### Decision
 
 `start.bat` launches the existing `MiniServer` entry point through `javaw.exe`
-and exits without waiting for startup or Edge confirmation. `stop.bat` invokes
+and exits without waiting for startup or browser-opening confirmation. `stop.bat` invokes
 `MiniServer stop` through `java.exe`. Both use quoted absolute classpath paths
 derived from `%~dp0` and do not change the command working directory.
 
@@ -1621,6 +1625,123 @@ is used.
 - Missing or incorrect stop tokens cannot trigger shutdown.
 - Runtime control state remains local to the current user/computer context.
 - Exact simultaneous start/stop transaction ordering is not guaranteed.
+
+---
+
+## D-025 — Windows Default Browser Launch
+
+### Decision
+
+For every valid local application URL to be opened, Mini Server asks Windows to open that URL using the configured operating-system HTTP URL handler.
+
+Mini Server does not explicitly select a browser product and does not determine which browser executable handles the URL. Windows and the current user's operating-system configuration select the browser.
+
+Mini Server therefore uses:
+
+- No browser executable discovery
+- No Microsoft Edge installation detection
+- No supported-browser list
+- No browser-specific executable paths
+- No browser priority or fallback chain
+
+Every submitted URL must still use `127.0.0.1` and the actual active Mini Server dynamic port.
+
+D-025 supersedes D-004 — Browser Launch Uses the Assigned Port. Only D-004's browser-selection rule is replaced: the requirement to wait for a usable server and use its actual active port remains valid.
+
+### Startup Behavior
+
+On a first start, browser opening occurs only after the HTTP server is ready, the actual dynamic port is known, and valid local runtime state has been published.
+
+On a repeated start, Mini Server reuses the existing local server and its active port without starting another server or requesting another port.
+
+In both cases, D-026 determines which application URLs are selected and their order. Mini Server submits each selected URL to Windows in that order.
+
+Failure to open one URL is isolated from the running server and from attempts to open later valid URLs. When practical, a concise diagnostic provides the affected local URL for manual use.
+
+Browser lifetime remains independent from Mini Server lifetime. Closing the Windows-selected browser does not intentionally stop the server.
+
+D-020 remains authoritative for runtime coordination. D-024 remains authoritative for detached startup and authenticated graceful shutdown.
+
+### Rationale
+
+Browser choice is an operating-system and user preference. It should not be a Mini Server responsibility.
+
+Delegating HTTP URL handling to Windows removes browser-product discovery and lets the user's current Windows configuration determine the browser.
+
+### Consequences
+
+- Microsoft Edge is no longer required for v1.1 browser opening.
+- Browser-launch logic is independent of individual browser products.
+- Windows default-browser behavior determines which application handles local URLs.
+- Changing the Windows default browser is respected by a later start action without restarting Mini Server.
+- Every browser URL still uses the actual active local port.
+- Multiple selected URLs are submitted in the configured order.
+- Failure to open one URL does not invalidate the server, runtime state, active port, or later URL attempts.
+- Browser lifetime does not own server lifetime.
+- D-004 is superseded while remaining a historical v1.0-era decision record.
+
+---
+
+## D-026 — Shared Installation Start-Site Configuration
+
+### Decision
+
+Mini Server uses:
+
+```text
+<installation-root>/config/start-sites.txt
+```
+
+to select which existing applications should be opened automatically during a normal start action.
+
+The configuration belongs to the installation and is shared when the physical installation is shared. It affects browser opening only and does not define application discovery or serving.
+
+The file is simple UTF-8 text with one effective first-level application directory name per line. It is not JSON, XML, YAML, key/value configuration, or a general-purpose settings framework. It cannot contain arbitrary URLs or filesystem paths.
+
+The v1.1 distribution provides this default active entry:
+
+```text
+example
+```
+
+The `example` application is not hard-coded in Java and opens only because the distributed configuration lists it.
+
+### Configuration Behavior
+
+Entries are normalized and validated according to REQ-010. Invalid, reserved, unsafe, duplicate, or missing-application entries are ignored without failing server startup. Duplicate handling retains the first occurrence and valid entries preserve file order.
+
+If `start-sites.txt` is missing or has no effective valid entries, the server starts normally and opens no application automatically. Normal runtime startup does not recreate a missing configuration file.
+
+If an existing configuration file cannot be read, an otherwise successful server remains active, no URLs are derived from unreadable content, and a concise diagnostic reports the problem.
+
+### Configuration Lifetime
+
+The configuration is evaluated on every normal start action, including repeated starts.
+
+Changes therefore take effect on the next `start.bat` invocation without restarting the active server. No file watcher or active-server configuration reload service is required.
+
+### Runtime Boundary
+
+Installation configuration is not runtime coordination state. It must not be copied into `%LOCALAPPDATA%\MiniServer\runtime\` and creates no shared runtime locking or shared port state.
+
+It must not alter stop tokens, runtime locks, shared persistence, private persistence, or persistence locking.
+
+### Interaction
+
+D-026 determines which valid application URLs are selected and their order. D-025 determines how Windows opens those URLs.
+
+### Rationale
+
+A small installation-level list makes automatic opening configurable for local and shared deployments without turning application discovery into configuration or introducing a general settings framework.
+
+### Consequences
+
+- Users of one physical shared installation share its start-site selection.
+- Application serving remains based on actual valid first-level directories below `www/`.
+- Applications do not need a start-site entry to remain available.
+- Missing, empty, or partly invalid configuration does not prevent server startup.
+- A repeated start uses the current configuration and existing active port.
+- Runtime coordination and persistence boundaries remain unchanged.
 
 ---
 

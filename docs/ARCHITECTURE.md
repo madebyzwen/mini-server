@@ -14,6 +14,7 @@ The server provides:
 - A shared JavaScript client library
 - Dynamic loopback-only HTTP startup
 - Local per-user/computer instance coordination
+- Installation-level start-site selection and Windows-default browser opening
 - Concurrency-safe file persistence
 
 The server remains generic and does not interpret application-specific data.
@@ -31,6 +32,8 @@ A representative distribution is:
     ├── miniweb-template.zip
     ├── start.bat
     ├── stop.bat
+    ├── config\
+    │   └── start-sites.txt
     └── www\
         ├── _shared\
         │   └── mini-api.js
@@ -42,9 +45,9 @@ A representative distribution is:
         └── another-app\
             └── ...
 
-The installation may be shared by multiple users and computers. It contains the server distribution, web applications, and shared persistence data.
+The installation may be shared by multiple users and computers. It contains the server distribution, installation-level `config`, web applications, and shared persistence data. Users of one physical installation share `config\start-sites.txt`.
 
-It must not contain authoritative machine- or process-specific runtime coordination state. In particular, an installation-level `.runtime` directory is not part of the target runtime architecture.
+Installation configuration is distinct from runtime coordination state and private user persistence. The installation must not contain authoritative machine- or process-specific runtime coordination state. In particular, an installation-level `.runtime` directory is not part of the target runtime architecture.
 
 ### Local Runtime State
 
@@ -98,6 +101,22 @@ An application owns its static HTML, CSS, JavaScript, and assets. It can use bot
     private: %APPDATA%\MiniServerData\<site>\data\data.json
 
 Both scopes use the same JSON structure and persistence operations. Every operation must select one scope explicitly; there is no default scope.
+
+## Start-Site Configuration
+
+Automatic application opening is controlled by:
+
+```text
+<installation-root>\config\start-sites.txt
+```
+
+This installation-level file selects existing applications only. Application discovery and serving remain based on valid first-level directories below `www/`; the configuration does not create, enable, disable, or otherwise define applications.
+
+The v1.1 distribution contains `example` as the default active entry. The Java implementation has no special hard-coded startup behavior for `example`; it opens only because the distributed configuration lists it.
+
+The file is evaluated on every normal start action, including repeated starts. A configuration change therefore takes effect on the next `start.bat` invocation without restarting the active server.
+
+A missing or effectively empty configuration means that no application is opened automatically. Invalid, reserved, duplicate, and missing-application entries are ignored according to REQ-010.
 
 ## Static File Serving
 
@@ -361,30 +380,58 @@ Mini Server permits one running server instance per local user/computer context.
 `start.bat` launches the existing `MiniServer` entry point through `javaw.exe`
 using quoted absolute paths based on the batch-file directory. It exits without
 waiting for startup or browser confirmation. The detached process continues only
-when it owns the active server; a repeated-start process opens the existing URL
+when it owns the active server; a repeated-start process opens the currently configured URLs
 and exits naturally.
 
 ### First Local Start
 
 A startup attempt:
 
-1. Obtains local `startup.lock` using a bounded wait.
-2. Evaluates the local process-owned `instance.lock`.
-3. If no active instance owns it, invalidates stale `instance.json` state.
-4. Obtains and retains `instance.lock`.
-5. Binds the HTTP server to `127.0.0.1` using port `0`.
-6. Reads the operating-system-assigned port and confirms readiness.
-7. Publishes the port and an unpredictable per-instance stop token in local `instance.json`.
-8. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
-9. Opens Microsoft Edge with the configured start target.
+1. Performs normal local locking and state startup according to D-020.
+2. Binds the HTTP server to `127.0.0.1` using port `0`.
+3. Reads the actual operating-system-assigned port.
+4. Confirms that the HTTP server is ready.
+5. Publishes the port and an unpredictable per-instance stop token in local `instance.json`.
+6. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
+7. Reads installation-level `config\start-sites.txt`.
+8. Normalizes and validates its entries.
+9. Ignores invalid, reserved, duplicate, and missing applications.
+10. Constructs application URLs using `127.0.0.1` and the actual active port.
+11. Asks Windows to open each URL in configured order using its configured HTTP URL handler.
+12. Continues the server lifetime independently of browser lifetime.
 
 ### Repeated Local Start
 
-If `instance.lock` is owned by the active local server, the repeated start does not start another server. It obtains valid local `instance.json` state, reuses the active local port, opens the existing URL in Edge, and exits.
+If `instance.lock` is owned by the active local server, the repeated start:
+
+1. Does not start another HTTP server or request another port.
+2. Obtains valid local `instance.json` state and reuses the active local port.
+3. Rereads installation-level `config\start-sites.txt`.
+4. Evaluates the current entries using the same validation and ordering rules.
+5. Constructs application URLs using the existing active port.
+6. Asks Windows to open each URL using its configured HTTP URL handler.
+7. Exits normally.
 
 If an active lock exists but valid state cannot be obtained within the bounded startup procedure, the repeated start fails clearly instead of starting a competing process.
 
 A state file alone is never proof that an instance is active. Stale state does not prevent a later start when no process owns `instance.lock`.
+
+### Failure Boundaries
+
+The startup/browser flow has three ordered boundaries:
+
+```text
+server startup
+    -> start-site evaluation
+    -> browser opening
+```
+
+A start-site evaluation or browser-opening failure must not retroactively invalidate an already successfully running server.
+
+- Missing or effectively empty configuration leaves the server running and opens no application automatically.
+- Unreadable configuration leaves the server running, derives no URLs from unreadable content, and produces a concise diagnostic.
+- Failure to open one URL leaves the server running and does not prevent attempts for remaining valid URLs.
+- If no browser is available, runtime state remains valid and authenticated `stop.bat` shutdown continues to work.
 
 ### Shared Installation Concurrency
 
@@ -394,7 +441,7 @@ Cross-computer persistence safety is provided by the short-lived persistence fil
 
 ### Server Lifetime
 
-The Java server runs independently of Microsoft Edge. Closing browser tabs or windows does not intentionally stop it.
+The Java server runs independently of the Windows-selected browser. Closing browser tabs, windows, or the browser application does not intentionally stop it.
 
 `stop.bat` invokes `MiniServer stop` through normal `java.exe`. The command reads
 the local port and token, then sends `POST /__miniserver/stop` with the token in
@@ -409,7 +456,7 @@ The normal startup and repeated-start locks remain authoritative. Transactionall
 perfect behavior for start and stop commands launched at the exact same instant
 is intentionally outside this small launcher design.
 
-Detailed startup behavior is defined by D-020 and REQ-006.
+Current startup and browser authority is divided between D-020 for runtime coordination, D-024 for detached start and graceful stop, D-025 and REQ-009 for Windows browser opening, and D-026 and REQ-010 for start-site selection. REQ-006 remains the archived historical v1.0 startup/browser contract rather than the active v1.1 browser requirement.
 
 ## Architectural Principles
 

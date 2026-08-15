@@ -46,9 +46,16 @@ If released behavior needs to change, create a new requirement instead of rewrit
 
 ## Active Requirements
 
-There are currently no approved active requirements.
+The following requirements are approved for Mini Server v1.1 implementation:
 
-Mini Server v1.1 is in planning. Planning notes and roadmap candidates do not become binding until they are explicitly approved and placed in `requirements/active/`.
+- REQ-009 — Default Browser Launch
+  - `active/REQ-009-default-browser-launch.md`
+  - Target release: v1.1
+- REQ-010 — Configurable Start Sites
+  - `active/REQ-010-configurable-start-sites.md`
+  - Target release: v1.1
+
+These two active requirements define the complete currently approved v1.1 functional scope. No other v1.1 feature is approved by this index.
 
 ---
 
@@ -78,6 +85,8 @@ REQ-001 through REQ-008 were released as Mini Server v1.0.0 and are archived in 
   - `archive/v1.0/REQ-007-error-handling-and-file-permissions.md`
 - REQ-008 — Runtime and Distribution
   - `archive/v1.0/REQ-008-runtime-and-distribution.md`
+
+The future v1.1 archive placeholder is `requirements/archive/v1.1/`. Active v1.1 requirements must not move there until v1.1 is actually released.
 
 ---
 

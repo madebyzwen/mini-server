@@ -10,16 +10,16 @@ They are not approved requirements unless they are explicitly moved into the req
 
 ## Current Focus
 
-Mini Server v1.0.0 has been released. The current focus is planning for v1.1.
+Mini Server v1.0.0 has been released, and the v1.1 scope is approved for implementation.
 
-Current planning candidates include:
+The approved v1.1 scope consists of:
 
-- Using the Windows default browser instead of selecting Microsoft Edge directly
-- Optionally configuring which existing Mini Server applications are opened automatically at startup
+- REQ-009 — Default Browser Launch
+- REQ-010 — Configurable Start Sites
 
-These candidates are described in `docs/notes/V1.1-DEFAULT-BROWSER.md` and `docs/notes/V1.1-START-SITES.md`. They are non-binding planning material, not approved requirements or implementation work.
+The authoritative definitions are the active requirement documents in `requirements/active/`. This roadmap does not duplicate their detailed behavior.
 
-The detailed scope of a future release will be defined by approved requirements, not by this roadmap.
+No other v1.1 feature is approved by this roadmap.
 
 ---
 
@@ -46,8 +46,6 @@ Possible future launcher improvements may include:
 
 - More convenient Windows startup integration
 - Desktop shortcuts
-- Improved detection of the preferred browser
-- Optional launcher configuration
 - Better startup error reporting
 
 ---

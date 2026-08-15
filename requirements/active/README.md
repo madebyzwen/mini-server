@@ -6,9 +6,14 @@ Requirements stored here are binding for ongoing implementation work unless they
 
 ## Current Scope
 
-There are currently no approved active requirements following the Mini Server v1.0.0 release.
+Mini Server v1.1 has an approved implementation scope containing exactly:
 
-Mini Server v1.1 is in planning. Roadmap items and planning notes, including the current v1.1 candidate notes, remain non-binding until a requirement is explicitly reviewed, approved, and placed in this directory.
+- REQ-009 — Default Browser Launch
+- REQ-010 — Configurable Start Sites
+
+Both requirements target v1.1 and are authoritative for the approved functionality they define.
+
+The earlier v1.1 planning notes remain historical context. The active requirements, current architecture, and approved decisions take precedence if a planning note differs.
 
 The central overview and current requirement status are maintained in `requirements/INDEX.md`.
 
