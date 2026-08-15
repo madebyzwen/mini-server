@@ -74,20 +74,23 @@ Related decisions:
 - D-020 — Local Per-User/Computer Runtime Instance
 - D-024 — Detached Windows Start and Authenticated Local Stop
 - D-025 — Windows Default Browser Launch
-- D-026 — Shared Installation Start-Site Configuration
+- D-027 — Shared and Private Start-Site Selection
 
 Description:
 
-Implement installation-level `config/start-sites.txt` for selecting which existing applications are automatically opened during a normal start action.
+Implement two-level start-site selection using Shared installation configuration at `<installation-root>\config\start-sites.txt` and Private current-user configuration at `%APPDATA%\MiniServer\config\start-sites.txt`.
 
-The configuration affects browser opening only. Application discovery and serving remain based on the actual valid first-level directories below `www/`.
+Shared defines the upper bound of existing applications approved for automatic opening and their canonical order. Private may reduce that selection but cannot enable an application outside Shared or reorder it. Both configurations affect browser opening only; application discovery and serving remain based on the actual valid first-level directories below `www/`.
 
 Acceptance:
 
-- The future source and distribution contain `config/start-sites.txt`.
-- The distributed file contains `example` as its default active entry.
+- The future source and distribution contain the Shared `config/start-sites.txt`.
+- The distributed Shared file contains `example` as its default active entry.
+- The distribution does not package a pre-created Private current-user configuration file.
+- Private configuration is read from `%APPDATA%\MiniServer\config\start-sites.txt` as current-user Mini Server configuration.
+- Private configuration is not stored in `%APPDATA%\MiniServerData\` or `%LOCALAPPDATA%\MiniServer\runtime\`.
 - The Java implementation contains no hard-coded `example` startup behavior.
-- The file is read as UTF-8.
+- Both files are read as UTF-8.
 - Leading and trailing whitespace is trimmed.
 - Empty lines are ignored.
 - A line beginning with `#` after trimming is treated as a comment.
@@ -97,26 +100,38 @@ Acceptance:
 - Entries cannot provide a protocol, host, port, query, or fragment.
 - `_shared` is invalid as a start site.
 - Invalid or unsafe entries are ignored and never become arbitrary URLs or paths.
-- Duplicate entries produce one opening request, retaining the first occurrence.
-- Remaining valid entries preserve file order.
-- A configured application is selected only when its valid directory currently exists below `www/`.
+- Duplicate entries within either file retain only the first occurrence.
+- A Shared entry is approved only when its valid directory currently exists below `www/`.
+- A Private entry is effective only when it is in the current valid Shared-approved set.
+- Private cannot activate a valid existing application that is absent from Shared.
+- Shared file order is canonical, and Private inclusion cannot reorder it.
 - A missing configured application is ignored without failing startup or creating a directory.
 - Missing applications do not prevent other valid applications from opening.
-- A missing configuration file leaves the server running and opens no application automatically.
-- A missing configuration file is not recreated automatically during normal runtime startup.
-- An empty or effectively empty configuration opens no application automatically.
-- An unreadable configuration leaves the server active, derives no URLs from unreadable content, and produces a concise diagnostic.
+- A missing Shared file leaves the server running and opens no application automatically; Private cannot compensate.
+- An empty or effectively empty Shared file leaves the server running and opens no application automatically.
+- An unreadable Shared file leaves the server active, derives no URLs, prevents Private bypass, and produces a concise diagnostic.
+- A missing Private file selects the complete valid Shared selection.
+- An existing empty or effectively empty Private file selects no applications and does not fall back to Shared.
+- An unreadable Private file leaves the server active, opens no applications rather than falling back to Shared, and produces a concise diagnostic.
+- Neither missing configuration file is recreated automatically during normal runtime startup.
+- Private entries outside Shared are ignored even when the corresponding application exists below `www/`.
+- Removing a Shared application removes its effective eligibility on the next normal start even when stale Private selection remains.
+- Re-adding a Shared application selects it for users without a Private file and for users with a Private file only when that file still contains it.
+- A newly added Shared application does not enter an existing explicit Private selection automatically.
 - First-start evaluation occurs after readiness and valid runtime-state publication and uses the new actual active port.
 - A repeated start reuses the existing active server and port.
-- The configuration is reread on every normal start action, including repeated starts.
-- A configuration change while the server runs affects the next repeated start without restarting the server.
+- Both configurations are reread and their intersection is recomputed on every normal start action, including repeated starts.
+- A change to either file while the server runs affects the next repeated start without restarting the server.
 - Application discovery and serving remain independent from `start-sites.txt`.
-- Resulting URLs are passed in retained order to the REQ-009 browser-opening mechanism.
+- Shared approval is not authentication, authorization, or a static-serving allowlist.
+- Resulting URLs are passed in Shared order to the REQ-009 browser-opening mechanism.
 - No Microsoft Edge-specific launch logic is introduced.
 - Runtime state, stop tokens, runtime locking, and persistence boundaries remain unchanged.
-- Automated parser/configuration tests cover encoding, normalization, validation, deduplication, ordering, and failure cases.
-- Automated first-start and repeated-start tests cover current configuration and active-port use.
-- Distribution verification covers the default configuration file and entry.
+- Automated parser/configuration tests cover both files' encoding, normalization, validation, deduplication, and failure cases.
+- Automated selection tests cover Shared validation, Private intersection, missing and empty Private behavior, Private entries outside Shared, and Shared canonical ordering.
+- Automated first-start and repeated-start tests cover current Shared and Private contents, changes to either file, and active-port use.
+- Automated tests cover Shared removal and re-add behavior for users with and without existing Private files.
+- Distribution verification covers the Shared default configuration file and entry and confirms that no Private current-user file is packaged.
 - Production code, tests, and distribution remain compatible with Java 8.
 
 ---
@@ -133,7 +148,7 @@ Related requirements:
 Related decisions:
 
 - D-025 — Windows Default Browser Launch
-- D-026 — Shared Installation Start-Site Configuration
+- D-027 — Shared and Private Start-Site Selection
 
 Description:
 
@@ -160,23 +175,33 @@ Acceptance:
 
 ### v1.1 Behavior
 
-- The distribution contains `config/start-sites.txt` with default entry `example`.
+- The distribution contains the Shared `config/start-sites.txt` with active default entry `example`.
+- The distribution does not contain a pre-created Private current-user configuration file.
 - Microsoft Edge is not a required browser.
 - Windows default-browser handling is used.
 - Changing the Windows default browser is respected on a later start action.
 - A first start uses its newly assigned dynamic port.
 - A repeated start reuses the active server and port.
-- A repeated start rereads the current `start-sites.txt`.
-- Configuration changes while the server runs affect the next repeated start.
-- Multiple selected applications preserve configuration order.
-- Duplicate entries produce one opening request.
-- Comments, empty lines, and surrounding whitespace behave as specified.
+- A user with no Private file receives the complete valid Shared selection.
+- A Private subset reduces the Shared selection.
+- Private cannot enable an application outside the valid Shared-approved set.
+- An existing empty or effectively empty Private file selects no applications.
+- Shared order remains effective when Private entries use another order.
+- Duplicate entries in either file retain one effective entry.
+- Comments, empty lines, and surrounding whitespace behave as specified in both files.
 - `_shared` is never opened as an application.
 - Unsafe URL or path entries are never opened.
-- Missing configured applications are ignored.
-- Missing configuration leaves the server running and opens no application automatically.
-- Empty configuration leaves the server running and opens no application automatically.
-- Unreadable configuration does not stop an otherwise successful server.
+- Missing configured applications are ignored without being created.
+- Missing Shared configuration leaves the server running and opens no application automatically.
+- Empty or effectively empty Shared configuration leaves the server running and opens no application automatically.
+- Unreadable Shared configuration leaves the server running and opens none.
+- Unreadable Private configuration leaves the server running and opens none rather than falling back to all Shared applications.
+- A repeated start rereads both Shared and Private configuration and recomputes their intersection.
+- Shared changes while the server runs affect the next repeated start.
+- Private changes while the server runs affect the next repeated start.
+- Removing a Shared application prevents a stale Private selection from opening it on the next start action.
+- Re-adding a Shared application selects it for a user without a Private file and selects it for a user with a Private file only when that file contains it.
+- Application discovery and serving remain independent of Shared approval and Private selection.
 - Browser-opening failure does not stop the server.
 - Failure to open one URL does not prevent attempts for later valid URLs.
 - Closing the selected browser does not intentionally stop Mini Server.

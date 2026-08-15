@@ -14,14 +14,14 @@ The server provides:
 - A shared JavaScript client library
 - Dynamic loopback-only HTTP startup
 - Local per-user/computer instance coordination
-- Installation-level start-site selection and Windows-default browser opening
+- Shared and private start-site selection and Windows-default browser opening
 - Concurrency-safe file persistence
 
 The server remains generic and does not interpret application-specific data.
 
 ## Storage and Runtime Boundaries
 
-Mini Server distinguishes four physical areas.
+Mini Server distinguishes five physical areas.
 
 ### Shared Installation
 
@@ -45,9 +45,9 @@ A representative distribution is:
         └── another-app\
             └── ...
 
-The installation may be shared by multiple users and computers. It contains the server distribution, installation-level `config`, web applications, and shared persistence data. Users of one physical installation share `config\start-sites.txt`.
+The installation may be shared by multiple users and computers. It contains the server distribution, installation-level `config`, web applications, and shared persistence data. Users of one physical installation share the approval list and canonical order in `config\start-sites.txt`, but their effective automatic-opening selections may differ through Private configuration.
 
-Installation configuration is distinct from runtime coordination state and private user persistence. The installation must not contain authoritative machine- or process-specific runtime coordination state. In particular, an installation-level `.runtime` directory is not part of the target runtime architecture.
+Installation configuration is distinct from Private Mini Server configuration, runtime coordination state, and private application persistence. The installation must not contain authoritative machine- or process-specific runtime coordination state. In particular, an installation-level `.runtime` directory is not part of the target runtime architecture.
 
 ### Local Runtime State
 
@@ -66,6 +66,20 @@ This state describes only the local loopback server:
   per-instance stop token.
 
 These files are never served as web content and are never coordinated through a shared installation.
+
+### Private Mini Server Configuration
+
+Current-user Mini Server configuration is stored at:
+
+    %APPDATA%\MiniServer\config\start-sites.txt
+
+This file allows the current Windows user to select a subset of the Shared installation approval list. It is configuration for Mini Server itself, not application persistence, runtime coordination state, or a packaged installation default.
+
+Private Mini Server configuration is distinct from:
+
+- Local runtime coordination at `%LOCALAPPDATA%\MiniServer\runtime\`
+- Private application persistence at `%APPDATA%\MiniServerData\<site>\data\data.json`
+- Shared installation configuration at `<installation-root>\config\start-sites.txt`
 
 ### Shared Persistence
 
@@ -104,19 +118,28 @@ Both scopes use the same JSON structure and persistence operations. Every operat
 
 ## Start-Site Configuration
 
-Automatic application opening is controlled by:
+Automatic application opening uses two configuration levels:
 
 ```text
-<installation-root>\config\start-sites.txt
+Shared:  <installation-root>\config\start-sites.txt
+Private: %APPDATA%\MiniServer\config\start-sites.txt
 ```
 
-This installation-level file selects existing applications only. Application discovery and serving remain based on valid first-level directories below `www/`; the configuration does not create, enable, disable, or otherwise define applications.
+Shared is the upper bound: it defines which currently valid applications are centrally approved for automatic opening and their canonical opening order. Private belongs to the current Windows user and can reduce the Shared selection but cannot elevate an application outside it or reorder it.
 
-The v1.1 distribution contains `example` as the default active entry. The Java implementation has no special hard-coded startup behavior for `example`; it opens only because the distributed configuration lists it.
+When Private exists, the effective selection is the intersection of valid existing applications, Shared-approved applications, and Private-selected applications. When Private is missing, the complete valid Shared selection is effective. An existing empty or effectively empty Private file selects none.
 
-The file is evaluated on every normal start action, including repeated starts. A configuration change therefore takes effect on the next `start.bat` invocation without restarting the active server.
+Both files use the same simple UTF-8 line-oriented application-name syntax defined by REQ-010. Invalid, unsafe, reserved, and duplicate entries are ignored. Shared entries must correspond to valid first-level applications below `www/`; Private entries are matched only against the resulting valid Shared set.
 
-A missing or effectively empty configuration means that no application is opened automatically. Invalid, reserved, duplicate, and missing-application entries are ignored according to REQ-010.
+Application discovery and serving remain based on valid first-level directories below `www/`. Shared approval and Private selection control browser opening only; they do not create, enable, disable, authorize, or deny access to applications.
+
+The v1.1 distribution contains `example` as the default active entry in the Shared file. It does not package a pre-created Private file. The Java implementation has no special hard-coded startup behavior for `example`; it opens only when it is in the effective selection.
+
+Both files are evaluated on every normal start action, including repeated starts. A change to either file therefore takes effect on the next `start.bat` invocation without restarting the active server. No watcher or active reload service is used, and neither file is automatically rewritten during normal startup.
+
+A missing, empty, effectively empty, or unreadable Shared file means that no application is opened automatically. An unreadable Private file also opens none rather than falling back to all Shared applications. Configuration-reading failures do not invalidate an already successful server and produce concise diagnostics.
+
+Removing an application from Shared removes it from every user's effective selection on the next start action, even if stale Private entries remain. Re-adding it selects it for users without a Private file and for users with a Private file only when their file still contains it.
 
 ## Static File Serving
 
@@ -380,8 +403,8 @@ Mini Server permits one running server instance per local user/computer context.
 `start.bat` launches the existing `MiniServer` entry point through `javaw.exe`
 using quoted absolute paths based on the batch-file directory. It exits without
 waiting for startup or browser confirmation. The detached process continues only
-when it owns the active server; a repeated-start process opens the currently configured URLs
-and exits naturally.
+when it owns the active server; a repeated-start process opens the currently
+effective URLs and exits naturally.
 
 ### First Local Start
 
@@ -393,12 +416,13 @@ A startup attempt:
 4. Confirms that the HTTP server is ready.
 5. Publishes the port and an unpredictable per-instance stop token in local `instance.json`.
 6. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
-7. Reads installation-level `config\start-sites.txt`.
-8. Normalizes and validates its entries.
-9. Ignores invalid, reserved, duplicate, and missing applications.
-10. Constructs application URLs using `127.0.0.1` and the actual active port.
-11. Asks Windows to open each URL in configured order using its configured HTTP URL handler.
-12. Continues the server lifetime independently of browser lifetime.
+7. Reads and evaluates Shared `config\start-sites.txt`.
+8. Reads and evaluates Private `%APPDATA%\MiniServer\config\start-sites.txt` if it exists.
+9. Computes the effective Private subset of the valid Shared selection.
+10. Preserves Shared order.
+11. Constructs application URLs using `127.0.0.1` and the actual active port.
+12. Asks Windows to open each URL in effective order using its configured HTTP URL handler.
+13. Continues the server lifetime independently of browser lifetime.
 
 ### Repeated Local Start
 
@@ -406,11 +430,13 @@ If `instance.lock` is owned by the active local server, the repeated start:
 
 1. Does not start another HTTP server or request another port.
 2. Obtains valid local `instance.json` state and reuses the active local port.
-3. Rereads installation-level `config\start-sites.txt`.
-4. Evaluates the current entries using the same validation and ordering rules.
-5. Constructs application URLs using the existing active port.
-6. Asks Windows to open each URL using its configured HTTP URL handler.
-7. Exits normally.
+3. Rereads and evaluates current Shared configuration.
+4. Rereads and evaluates current Private configuration if it exists.
+5. Recomputes the effective Private subset of the valid Shared selection.
+6. Preserves Shared order.
+7. Constructs application URLs using the existing active port.
+8. Asks Windows to open each URL using its configured HTTP URL handler.
+9. Exits normally.
 
 If an active lock exists but valid state cannot be obtained within the bounded startup procedure, the repeated start fails clearly instead of starting a competing process.
 
@@ -428,8 +454,11 @@ server startup
 
 A start-site evaluation or browser-opening failure must not retroactively invalidate an already successfully running server.
 
-- Missing or effectively empty configuration leaves the server running and opens no application automatically.
-- Unreadable configuration leaves the server running, derives no URLs from unreadable content, and produces a concise diagnostic.
+- Missing, empty, effectively empty, or unreadable Shared configuration leaves the server running and opens no application automatically; Private cannot bypass this boundary.
+- Missing Private configuration uses the complete valid Shared selection.
+- Empty or effectively empty Private configuration leaves the server running and opens no application automatically.
+- Unreadable Private configuration leaves the server running and opens none rather than falling back to the complete Shared selection.
+- Unreadable configuration produces a concise diagnostic without altering runtime coordination or persistence.
 - Failure to open one URL leaves the server running and does not prevent attempts for remaining valid URLs.
 - If no browser is available, runtime state remains valid and authenticated `stop.bat` shutdown continues to work.
 
@@ -456,7 +485,7 @@ The normal startup and repeated-start locks remain authoritative. Transactionall
 perfect behavior for start and stop commands launched at the exact same instant
 is intentionally outside this small launcher design.
 
-Current startup and browser authority is divided between D-020 for runtime coordination, D-024 for detached start and graceful stop, D-025 and REQ-009 for Windows browser opening, and D-026 and REQ-010 for start-site selection. REQ-006 remains the archived historical v1.0 startup/browser contract rather than the active v1.1 browser requirement.
+Current startup and browser authority is divided between D-020 for runtime coordination, D-024 for detached start and graceful stop, D-025 and REQ-009 for Windows browser opening, and D-027 and REQ-010 for Shared and Private start-site selection. D-026 is the superseded installation-only start-site decision. REQ-006 remains the archived historical v1.0 startup/browser contract rather than the active v1.1 browser requirement.
 
 ## Architectural Principles
 

@@ -1317,7 +1317,7 @@ A startup attempt obtains startup.lock before it evaluates or changes local inst
 
 If no active process owns instance.lock, the new process invalidates stale state, obtains and retains instance.lock, starts the server on 127.0.0.1 using port 0, obtains the assigned port, confirms readiness, and publishes that port in instance.json.
 
-If another local process owns instance.lock, the startup attempt does not start another server. It obtains the active port from valid local runtime state, evaluates the current configured application URLs according to D-026, asks Windows to open them according to D-025, and exits.
+If another local process owns instance.lock, the startup attempt does not start another server. It obtains the active port from valid local runtime state, evaluates the current configured application URLs according to D-027, asks Windows to open them according to D-025, and exits.
 
 Startup races and lock acquisition use bounded, deterministic waits. A state file alone is never proof that an instance is active. Failure to obtain valid state for an actively locked instance fails cleanly rather than starting a competing local process.
 
@@ -1654,7 +1654,7 @@ On a first start, browser opening occurs only after the HTTP server is ready, th
 
 On a repeated start, Mini Server reuses the existing local server and its active port without starting another server or requesting another port.
 
-In both cases, D-026 determines which application URLs are selected and their order. Mini Server submits each selected URL to Windows in that order.
+In both cases, D-027 determines which application URLs are selected and their order. Mini Server submits each selected URL to Windows in that order.
 
 Failure to open one URL is isolated from the running server and from attempts to open later valid URLs. When practical, a concise diagnostic provides the affected local URL for manual use.
 
@@ -1683,6 +1683,10 @@ Delegating HTTP URL handling to Windows removes browser-product discovery and le
 ---
 
 ## D-026 — Shared Installation Start-Site Configuration
+
+Status: Superseded
+
+Superseded by: D-027 — Shared and Private Start-Site Selection
 
 ### Decision
 
@@ -1742,6 +1746,77 @@ A small installation-level list makes automatic opening configurable for local a
 - Missing, empty, or partly invalid configuration does not prevent server startup.
 - A repeated start uses the current configuration and existing active port.
 - Runtime coordination and persistence boundaries remain unchanged.
+
+---
+
+## D-027 — Shared and Private Start-Site Selection
+
+### Decision
+
+Mini Server uses two start-site configuration levels:
+
+```text
+Shared:  <installation-root>\config\start-sites.txt
+Private: %APPDATA%\MiniServer\config\start-sites.txt
+```
+
+Shared is the upper bound for automatic opening. It defines which currently valid first-level applications below `www/` are centrally approved and defines their canonical opening order.
+
+Private belongs to the current Windows user and may select only a subset of the valid Shared-approved applications. It controls inclusion only: it cannot elevate an application outside Shared and cannot reorder Shared-approved applications.
+
+When Private exists, the effective selection is the intersection of valid existing applications, Shared-approved applications, and Private-selected applications. When Private does not exist, the complete valid Shared selection is effective.
+
+D-027 supersedes D-026 — Shared Installation Start-Site Configuration because the active, unreleased v1.1 design was refined before T-016 implementation to add Private filtering over Shared approval. D-026 remains the historical record of the earlier installation-only decision.
+
+### Configuration Behavior
+
+Both files are simple UTF-8 line-oriented application-name lists. Leading and trailing whitespace is trimmed; empty lines and trimmed comment lines beginning with `#` are ignored. Entries are limited to safe first-level application names, `_shared` is invalid, and arbitrary URLs and filesystem paths are not accepted. Duplicates retain only their first occurrence within each file.
+
+Shared entries become approved only when their valid application directory currently exists below `www/`. Private entries are matched only against that valid Shared-approved set. Missing application directories are ignored and are never created by start-site evaluation.
+
+Shared file order remains authoritative after Private filtering. Private file order has no effect on the resulting opening order.
+
+Removing an application from Shared removes it from every user's effective automatic-opening selection on the next normal start action, even when it remains in a Private file. If Shared later re-adds it, users without a Private file receive it as part of Shared, while users with a Private file receive it only if that file still selects it. Newly added Shared entries similarly do not enter an existing explicit Private selection automatically.
+
+### Missing, Empty, and Unreadable Files
+
+- Missing Shared configuration leaves the server active and opens no application automatically. Private cannot compensate, and normal startup does not recreate Shared.
+- Empty or effectively empty Shared configuration leaves the server active and opens no application automatically. Private cannot activate anything outside it.
+- Unreadable Shared configuration leaves the server active, derives no effective automatic-opening URLs, prevents Private bypass, and produces a concise diagnostic.
+- Missing Private configuration uses the complete valid Shared selection and is not created automatically.
+- Existing empty or effectively empty Private configuration selects no applications and does not fall back to Shared.
+- Unreadable Private configuration leaves the server active, opens no application automatically rather than falling back to Shared, and produces a concise diagnostic.
+
+### Configuration Lifetime and Boundaries
+
+Shared and Private configuration are evaluated on every normal start action, including repeated starts. A change to either file takes effect on the next `start.bat` invocation without restarting the active HTTP server. No file watcher or active reload service is required, and neither file is automatically rewritten during normal startup.
+
+Shared approval and Private selection control automatic browser opening only. Application discovery and normal serving remain based on valid first-level directories below `www/`. Start-site configuration is not authentication, authorization, application isolation, or a static-serving allowlist.
+
+Private start-site configuration is Mini Server user configuration. It belongs at `%APPDATA%\MiniServer\config\start-sites.txt`, outside local runtime coordination state at `%LOCALAPPDATA%\MiniServer\runtime\` and outside private application persistence at `%APPDATA%\MiniServerData\`.
+
+Start-site evaluation must not alter the active port, `instance.json`, startup or instance locking, the stop token, persistence, MiniApi behavior, or server lifetime. D-025 determines how Windows opens the URLs selected and ordered by D-027.
+
+### Rationale
+
+Shared configuration lets the application developer or installation maintainer approve applications that are ready for automatic presentation. Private configuration lets each Windows user narrow that approved set without gaining the ability to activate an unapproved application.
+
+Keeping Shared order authoritative preserves central presentation order while making the user's role a selected/not-selected choice. Keeping start-site approval separate from application discovery and serving avoids turning a browser-convenience feature into access control.
+
+The user-specific file is Mini Server configuration rather than application data or process coordination. Its `%APPDATA%\MiniServer\config\` location preserves the distinct responsibilities of configuration, runtime state, and application persistence.
+
+### Consequences
+
+- Users of one physical installation share the Shared approval list and order but may have different effective automatic-opening selections.
+- Private can reduce Shared but can never elevate an application outside it or change its canonical order.
+- Users without a Private file receive the complete valid Shared selection.
+- An existing empty Private file selects none.
+- Missing, empty, or unreadable Shared configuration opens none; unreadable Private configuration also opens none rather than falling back to Shared.
+- Changes to either file affect the next normal start action, including a repeated start.
+- Removing and re-adding Shared entries follows the current presence and contents of each user's Private file.
+- The distribution contains the Shared default file but does not package a pre-created Private user file.
+- Applications remain discoverable and serveable independently of start-site approval.
+- Runtime coordination, application persistence, browser-launch failure boundaries, and Java 8 compatibility remain unchanged.
 
 ---
 
