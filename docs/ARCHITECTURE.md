@@ -15,7 +15,7 @@ The server provides:
 - Dynamic loopback-only HTTP startup
 - Local per-user/computer instance coordination
 - Shared and private start-site selection and Windows-default browser opening
-- A built-in welcome and start-site replacement-selection page
+- A built-in start-site setup, editing, and recovery page
 - Concurrency-safe file persistence
 
 The server remains generic and does not interpret application-specific data.
@@ -32,6 +32,7 @@ A representative distribution is:
     ├── mini-server.jar
     ├── miniweb-template.zip
     ├── start.bat
+    ├── configure.bat
     ├── stop.bat
     ├── config\
     │   └── start-sites.txt
@@ -175,10 +176,9 @@ Private: %APPDATA%\MiniServer\Config\start-sites.txt
 
 Shared is the upper bound: it defines which currently valid applications are centrally approved for automatic opening and their canonical opening order. Private belongs to the current Windows user and can reduce the Shared selection but cannot elevate an application outside it or reorder it.
 
-When Private exists, the effective selection is the intersection of valid
-existing applications, Shared-approved applications, and Private-selected
-applications. Shared order remains authoritative. An existing empty or
-effectively empty Private file selects none, and newly added Shared entries do
+When readable Private exists, the effective selection is the intersection of
+valid existing applications, Shared-approved applications, and Private-selected
+applications. Shared order remains authoritative. Newly added Shared entries do
 not enter an existing Private selection automatically.
 
 Both files use the same simple UTF-8 line-oriented application-name syntax defined by REQ-010. Invalid, unsafe, reserved, and duplicate entries are ignored. Shared entries must correspond to valid first-level applications below `www/`; Private entries are matched only against the resulting valid Shared set.
@@ -192,85 +192,113 @@ starts. A change to either file therefore takes effect on the next `start.bat`
 invocation without restarting the active server. No watcher or active reload
 service is used.
 
-When a normal start action finds no Private file, it initializes the file only
-after server readiness, active-port discovery, and valid runtime-state
-publication. A readable Shared file is normalized to its current valid
-application list, and only those canonical names are safely written to the new
-Private file in Shared order. Comments, invalid entries, duplicates, and
-missing applications are not copied. A readable Shared file with an empty
-valid selection may create an empty Private file.
+Normal start planning has three outcomes:
 
-The initialization start opens only the built-in root page at
-`http://127.0.0.1:<active-port>/`; it opens no application URL. If Shared is
-missing, unreadable, or cannot be resolved, the server remains active, no
-Private file is fabricated, no application opens automatically, and the root
-page is opened if practical. A later start retries while Private remains
-absent.
+```text
+Private missing
+    -> open root setup; do not create Private
 
-A missing, empty, effectively empty, or unreadable Shared file means that no application is opened automatically. An unreadable Private file also opens none rather than falling back to all Shared applications. Configuration-reading failures do not invalidate an already successful server and produce concise diagnostics.
+readable Private with a nonempty effective Shared intersection
+    -> open those applications in Shared order
+
+zero, unreadable, or otherwise broken effective selection
+    -> open root recovery
+```
+
+The first outcome occurs only after server readiness, active-port discovery,
+and valid runtime-state publication. The root page proposes all current valid
+Shared applications as checked, but successful Save is the only setup commit
+point. Closing root without saving leaves Private absent, so a later normal
+start offers setup again.
+
+The recovery outcome includes empty/effectively empty Private, a selection made
+entirely stale by Shared changes, unreadable Private, readable-empty Shared,
+and unavailable Shared. The already started server remains active. Shared-empty
+or unavailable recovery creates no new Private file and disables saving.
+Configuration-reading failures do not invalidate runtime coordination.
 
 Removing an application from Shared removes it from every user's effective
 selection on the next start action, even if stale Private entries remain.
 Re-adding it affects an existing Private selection only when that file still
 contains it.
 
-## Built-In Welcome and Start-Site Selection
+## Built-In Start-Site Setup, Editing, and Recovery
 
 `GET /` is reserved for Mini Server-owned runtime infrastructure. It returns an
-English-only welcome and replacement-selection page headed `Welcome to Mini
-Server`. The page is not a directory listing, hosted application, persistence
-API, normal file below `www`, or authentication/authorization interface.
+English-only page headed `Welcome to Mini Server`. The page is not a directory
+listing, hosted application, persistence API, normal file below `www`, or
+authentication/authorization interface.
 
-Every request for `/` rereads current Shared configuration and applies the
-normal Shared parsing, safety, and application-existence rules. The page lists
-only current valid Shared-approved applications in Shared order and initially
-checks all of them. It never reads Private configuration to determine checkbox
-state or page choices. Physical applications absent from Shared, `_shared`,
-unsafe entries, invalid entries, and missing applications are never offered.
-The page explains that saving creates a new selection and completely replaces,
-rather than displays or merges with, the current personal selection.
+Every request rereads current Shared configuration and applies the normal
+parsing, safety, and application-existence rules. Shared alone determines the
+available choices and their order; Private can determine only which of those
+choices are checked:
 
-The page uses self-contained HTML, CSS, and JavaScript with a clean, modern,
-responsive desktop layout, clear checkbox choices, a primary `Save selection`
-action, and concise success/error feedback. It shows the advanced-user path
-`%APPDATA%\MiniServer\Config\start-sites.txt`. It has no external CDN, font,
-asset, UI framework, analytics, tracking, service, or internet dependency.
+```text
+Private missing
+    -> all current valid Shared choices checked as an unsaved proposal
 
-If Shared is readable but has no current valid applications, the page explains
-that none are available and can save an empty selection. If Shared is
-unavailable or cannot be validated, the page explains that applications cannot
-currently be selected and saving is disabled.
+Private readable
+    -> current valid Shared/Private intersection checked
+
+Private unreadable
+    -> warning and no guessed/preselected saved state
+```
+
+Stale/unapproved Private entries are not displayed. Newly Shared applications
+are displayed unchecked for an existing Private selection unless that file
+already selects them. Private can never introduce a choice outside Shared.
+
+The self-contained HTML, CSS, and JavaScript provide a responsive desktop
+layout, clear checkbox choices, a primary `Save and open` action, concise
+feedback, and the advanced-user path
+`%APPDATA%\MiniServer\Config\start-sites.txt`. The page explains that nothing
+is saved until Save succeeds, that saving replaces and immediately opens the
+personal selection, and that the selection is reused on future normal starts.
+It has no external asset, service, framework, analytics, tracking, or internet
+dependency.
+
+Readable Shared with no valid applications is an explanatory recovery state
+with saving unavailable. Unavailable Shared is a distinct explanatory state
+with saving unavailable. Unreadable Private is a recovery state that warns the
+user that existing saved state could not be read; if Shared remains available,
+the user may choose a nonempty replacement.
 
 The canonical save route is:
 
     POST /__miniserver/start-sites
 
 It accepts only `application/json` with exactly one `sites` array of strings.
-Malformed or structurally invalid payloads are rejected without a write. For a
-valid payload, the server rereads and revalidates current Shared configuration;
-if Shared is unavailable, it refuses the save. Otherwise it treats submitted
-names only as requested membership, discards names outside the current valid
-Shared set, deduplicates them, restores Shared canonical order, and safely
-replaces the complete Private UTF-8 file. An empty selection creates an
-existing empty file. The previous Private file is neither read to derive the
-result nor merged into it.
+Malformed structure and an empty requested selection are rejected without a
+write. For valid structure, the server rereads Shared, treats submitted names
+only as untrusted membership, filters to current valid approval, deduplicates,
+restores Shared order, and requires at least one normalized application. A
+nonempty request that has become wholly stale is rejected distinctly from
+malformed/empty user input. Every failure preserves existing Private content.
+
+After normalization, the endpoint safely replaces or creates the complete
+canonical Private UTF-8 file. Only after the write succeeds does it apply the
+selection. Its narrowly scoped JSON success body contains the server-normalized
+applications and server-generated local targets in Shared order. The root UI
+uses only this result: the first target replaces the current root tab and later
+targets are opened in order. Raw checkbox values never become post-save URLs.
+
+The in-flight primary action is disabled and only one logical submission is
+allowed, preventing double-save and duplicate-opening behavior. Failure keeps
+the current checkbox state, shows a concise error, and enables a valid retry.
+The design does not rely on `window.close()`.
 
 The endpoint is handled before application API/static routing on the existing
-loopback-bound listener. It writes only the canonical Private start-site file;
-the client cannot choose a target, path, URL, Shared configuration,
-persistence file, or runtime file. It is not a general settings API, adds no
-CORS, and introduces no authentication or account model. Saving does not open
-applications and takes effect on the next normal start action.
+loopback listener. It can write only canonical Private start-site configuration;
+the client cannot select a file, path, URL, Shared configuration, persistence,
+or runtime state. It is not a general settings API, adds no CORS, and introduces
+no authentication or accounts.
 
-A later manual visit to `/` intentionally repeats the same Shared-only,
-all-checked replacement workflow. Start-site UI and selection remain browser
-conveniences only; application discovery, static serving, persistence, and
-direct URL access remain independent.
-
-The runtime implements these boundaries with one `ConfiguredStartSiteProvider`
-shared by startup planning, the welcome handler, and the replacement handler.
-`StartSitePlan` explicitly distinguishes opening root, opening application
-URLs, and opening nothing; root is never represented as a synthetic site name.
+Browser failure after the successful write does not roll back the saved
+selection, stop the server, invalidate runtime state, or prevent isolated later
+opening attempts. The first same-browser navigation is the D-030 interactive
+exception to normal D-025 launching; additional application requests use the
+Windows-default-browser mechanism when practical.
 
 ## Static File Serving
 
@@ -530,7 +558,7 @@ The operating system selects an available local port. Mini Server reads the actu
 
 The loopback server is local even when its installation and shared persistence are on a network drive.
 
-## Startup and Browser Launch
+## Startup, Configure Action, and Browser Launch
 
 Mini Server permits one running server instance per local user/computer context. Different computers do not block each other merely because they use the same installation.
 
@@ -539,6 +567,10 @@ using quoted absolute paths based on the batch-file directory. It exits without
 waiting for startup or browser confirmation. The detached process continues only
 when it owns the active server; a repeated-start process opens the currently
 effective URLs and exits naturally.
+
+`configure.bat` follows the same portable detached Windows principles and
+invokes a dedicated configure mode. It starts or reuses the same server and
+runtime-state model, but opens only the built-in root page.
 
 ### First Local Start
 
@@ -551,18 +583,17 @@ A startup attempt:
 5. Publishes the port and an unpredictable per-instance stop token in local `instance.json`.
 6. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
 7. Checks canonical Private `%APPDATA%\MiniServer\Config\start-sites.txt`.
-8. If Private is missing, reads and validates current Shared configuration,
-   safely initializes Private from only the valid normalized Shared names when
-   Shared is available, and asks Windows to open only the built-in `/` page.
-9. If Private already exists, rereads Shared and Private, computes the current
-   valid Shared/Private intersection in Shared order, and asks Windows to open
-   those application URLs without automatically opening `/`.
-10. Uses `127.0.0.1` and the actual active port for every browser URL.
-11. Continues the server lifetime independently of browser lifetime.
+8. If Private is missing, opens only the built-in `/` setup page without
+   creating Private.
+9. If Private is readable and has a nonempty current valid Shared intersection,
+   asks Windows to open those application URLs in Shared order.
+10. If the effective selection is empty, unreadable, or unavailable, opens only
+    `/` as recovery; Shared-empty or unavailable state cannot create Private.
+11. Uses `127.0.0.1` and the actual active port for every browser URL.
+12. Continues the server lifetime independently of browser lifetime.
 
-If missing-Private initialization cannot use current Shared configuration, no
-Private file is created, no application URL opens, and the root page is opened
-if practical so it can explain that selection is currently unavailable.
+No start-site file is created by normal-start planning. A successful Save from
+the root UI is the first-run commit point.
 
 ### Repeated Local Start
 
@@ -570,17 +601,33 @@ If `instance.lock` is owned by the active local server, the repeated start:
 
 1. Does not start another HTTP server or request another port.
 2. Obtains valid local `instance.json` state and reuses the active local port.
-3. Checks canonical Private configuration and rereads current Shared.
-4. If Private is missing, performs the same Shared-derived initialization and
-   opens only `/` on the existing active port.
-5. If Private exists, rereads it, recomputes the current valid Shared/Private
-   intersection in Shared order, and opens those application URLs without
-   automatically opening `/`.
+3. Rereads canonical Private configuration and current Shared.
+4. Applies the same three-way normal-start decision: missing Private opens setup,
+   nonempty effective Private opens applications, and zero/broken effective
+   state opens recovery.
+5. Creates no Private file merely by opening setup or recovery.
 6. Exits normally.
 
 If an active lock exists but valid state cannot be obtained within the bounded startup procedure, the repeated start fails clearly instead of starting a competing process.
 
 A state file alone is never proof that an instance is active. Stale state does not prevent a later start when no process owns `instance.lock`.
+
+### Configure Action
+
+`configure.bat` conceptually invokes `MiniServer configure`.
+
+- If no server is active, configure mode performs the normal loopback/dynamic-
+  port startup and runtime publication, opens only `/`, and leaves the server
+  running normally.
+- If a server is active, it reuses the current instance and actual port, opens
+  only `/`, starts no second listener, and exits normally.
+- It does not evaluate normal configured application opening and does not modify
+  Private. Only a successful Save can do that.
+- Root opening uses the Windows default browser. Browser failure leaves the
+  server running and the active runtime state valid.
+
+Configure mode is not a second server, listener, settings service, or runtime-
+state model. Manual navigation to the active root URL remains valid.
 
 ### Failure Boundaries
 
@@ -595,16 +642,16 @@ server startup
 A start-site evaluation or browser-opening failure must not retroactively invalidate an already successfully running server.
 
 - Missing or unreadable Shared configuration leaves the server running and
-  opens no application automatically. When Private is missing, it also prevents
-  initialization and saving, leaves Private absent, and opens `/` if practical.
-- Readable Shared configuration with no valid applications may initialize an
-  empty Private file and presents an empty available list on `/`.
-- Missing Private configuration is initialized from current valid Shared and
-  opens only `/` on that action; it never directly opens the initialized apps.
-- Empty or effectively empty Private configuration leaves the server running and opens no application automatically.
-- Unreadable Private configuration leaves the server running and opens none rather than falling back to the complete Shared selection.
+  opens only recovery. It prevents saving and leaves Private unchanged.
+- Readable Shared with no valid applications creates no Private file, disables
+  saving, and opens recovery.
+- Missing Private opens setup without creating a file.
+- Empty or effectively empty Private opens recovery instead of silently doing nothing.
+- Unreadable Private opens recovery, warns that saved state is unknown, and
+  does not fall back to or preselect the complete Shared selection.
 - Unreadable configuration produces a concise diagnostic without altering runtime coordination or persistence.
 - Failure to open one URL leaves the server running and does not prevent attempts for remaining valid URLs.
+- Post-save browser failure never rolls back a successfully written selection.
 - If no browser is available, runtime state remains valid and authenticated `stop.bat` shutdown continues to work.
 
 ### Shared Installation Concurrency
@@ -632,12 +679,13 @@ is intentionally outside this small launcher design.
 
 Current startup and browser authority is divided between D-020 for runtime
 coordination, D-024 for detached start and graceful stop, D-025 and REQ-009 for
-Windows browser opening, and D-027/D-029 with REQ-010 for Shared/Private
-selection, initialization, and the built-in selection page. D-026 is the
+Windows browser opening, and D-027/D-029 as refined by D-030 with REQ-010 for
+Shared/Private selection and the built-in setup/editing/recovery page. D-026 is the
 superseded installation-only start-site decision. REQ-006 remains the archived
 historical v1.0 startup/browser contract rather than the active v1.1 browser
 requirement. D-028 and REQ-011 define the current-user storage hierarchy and
-Private-data migration.
+Private-data migration. D-030 defines the current setup commit point, root
+editing/recovery state, immediate post-save apply behavior, and configure action.
 
 ## Architectural Principles
 

@@ -1774,12 +1774,16 @@ Refined by:
 
 - D-028 — Unified Current-User Mini Server Storage
 - D-029 — Interactive Start-Site Selection and First-Run Initialization
+- D-030 — Start-Site Setup, Recovery, and Immediate Apply
 
 Shared upper-bound, intersection, ordering, parsing, and serving-independence
 rules remain current. D-028 changes canonical `Config` casing, while D-029
 replaces the missing-Private rule and adds the built-in replacement-selection
-workflow. The historical text below is preserved to show the pre-refinement
-v1.1 design implemented by T-016.
+workflow. D-030 then makes successful Save the explicit setup commit point,
+adds recovery for zero effective selections, edits actual saved state, applies
+successful changes immediately, and adds a supported configure action. The
+historical text below is preserved to show the pre-refinement v1.1 design
+implemented by T-016.
 
 ### Decision
 
@@ -1940,6 +1944,15 @@ precedence-defined transition would risk silently hiding or losing user data.
 
 ## D-029 — Interactive Start-Site Selection and First-Run Initialization
 
+Status: Refined
+
+Refined by: D-030 — Start-Site Setup, Recovery, and Immediate Apply
+
+D-030 replaces D-029's automatic missing-Private initialization, Shared-only
+all-checked editing model, empty-selection save, next-start-only apply behavior,
+and silent zero-effective result. The historical D-029 text below remains as
+the record of the design implemented before manual Windows verification.
+
 ### Decision
 
 D-029 refines D-027's missing-Private behavior. Shared remains the upper bound
@@ -2038,6 +2051,142 @@ simple reset/reselection workflow rather than pretending to edit saved state.
   persistence, authentication, authorization, and direct URL access.
 - Runtime coordination, stop behavior, port allocation, persistence, and Java
   8 compatibility remain unchanged.
+
+---
+
+## D-030 — Start-Site Setup, Recovery, and Immediate Apply
+
+### Decision
+
+D-030 refines the affected parts of D-027 and D-029. Shared remains the upper
+bound and canonical order, and an existing readable nonempty effective Private
+selection still controls normal automatic opening. The refinement changes when
+Private is committed, how `/` represents state, how zero-effective cases
+recover, what Save does, and how users intentionally reopen configuration.
+
+### Explicit Setup Commit Point
+
+A normal start with missing Private and at least one current valid Shared
+application starts or reuses the local server, obtains the actual active port,
+and opens only `/`. Displaying `/` does not create Private configuration.
+All current valid Shared choices are checked only as an unsaved first-run
+proposal. The first successful `Save and open` operation is the explicit setup
+commit point. Closing the page without saving leaves Private absent and causes
+the next normal start to offer setup again.
+
+A persistent `start-sites.txt.lock` sidecar, if created by a real write attempt,
+is only locking infrastructure. Its presence neither means that the file is
+actively locked nor that setup is complete.
+
+### Nonempty Selection and Shared Failure
+
+Every saved Private selection contains at least one current valid
+Shared-approved application. The UI prevents a zero-selection submission, and
+the server independently rejects both an empty request and a nonempty request
+whose save-time Shared revalidation normalizes to zero. Rejection preserves any
+existing Private content.
+
+Readable Shared with no valid applications and missing or unreadable Shared
+both keep the server active, create no new Private file, open no application,
+disable saving, and present an explanatory root page. A later normal start
+reevaluates the current state.
+
+### Root as Setup, Editor, and Recovery UI
+
+Every `GET /` derives available choices and presentation order only from current
+valid Shared. Checkbox state is context-sensitive:
+
+- Missing Private checks every Shared choice as an unsaved proposal.
+- Readable Private checks only its current valid intersection with Shared.
+- Unreadable Private warns that saved state could not be read and guesses no
+  selection; no choice is preselected merely as fallback.
+
+Stale or unapproved Private entries are not displayed, and newly added Shared
+applications are unchecked for an existing Private selection unless already
+selected there. Private never introduces a choice outside Shared.
+
+Normal start opens `/` as recovery whenever no effective application can be
+opened, including empty or effectively empty Private, fully stale Private,
+unreadable Private, empty/effectively empty Shared, or unavailable Shared.
+When at least one effective application remains, normal start opens it in
+Shared order without forcing `/`.
+
+### Save and Immediate Apply
+
+The internal save endpoint rereads Shared, treats submitted names only as
+untrusted requested membership, filters and deduplicates them, restores Shared
+order, requires a nonempty normalized result, and safely creates or replaces
+the complete canonical Private file. Only after that write succeeds does Mini
+Server apply the normalized selection immediately.
+
+The success response is narrowly scoped to the built-in UI and contains the
+server-normalized applications and server-generated local targets in Shared
+order. The root page uses only that response: its current tab navigates to the
+first normalized application and additional normalized applications are opened
+in order. It does not use raw submitted values to construct post-save URLs and
+does not rely on `window.close()`.
+
+The first same-browser navigation is a narrow interactive exception to D-025's
+normal operating-system launch flow. D-025 remains authoritative for normal
+first and repeated starts, configure-mode root opening, and additional
+post-save application-opening requests when practical. Every target still uses
+`127.0.0.1`, the actual active dynamic port, and a server-validated application
+name.
+
+Browser-opening failure after a successful write does not roll back or corrupt
+Private, stop the server, invalidate runtime state, or prevent isolated attempts
+for later applications. During an in-flight save, the primary action is
+disabled and the UI permits only one logical submission so a double action
+cannot duplicate saves or opening. A failed save retains checkbox state, shows
+a concise error, and re-enables a valid retry.
+
+### Supported Configure Action
+
+v1.1 adds `configure.bat` and a dedicated `MiniServer configure` mode. This is
+an intentional user-facing route to `/` despite dynamic ports.
+
+- With no active instance, configure mode starts the normal loopback dynamic-
+  port server and runtime coordination, opens only `/`, and leaves the server
+  running.
+- With an active instance, it reuses the current instance and port, starts no
+  second server, opens only `/`, and exits normally.
+- The launcher itself modifies no Private configuration; only successful Save
+  does.
+- It follows the detached portable Windows launcher model and Windows default-
+  browser behavior where applicable. Browser failure does not stop the server.
+
+Configure mode is a convenience action, not a second listener, second server,
+general settings service, or new runtime-state model. Manual root navigation
+remains valid.
+
+### Rationale
+
+Manual Windows verification exposed concrete usability failures in D-029's
+earlier design: setup was silently committed before Save; closing the welcome
+page still completed setup; later reconfiguration did not show the actual
+personal selection; zero selections could make normal startup appear to do
+nothing; Save did not apply the choice just made; and dynamic-port operation
+provided no normal way to reopen configuration.
+
+Making Save the explicit commit point gives user intent a clear boundary.
+Giving every zero-effective state a visible root recovery path avoids silent
+failure. Server-normalized immediate apply makes the result trustworthy and
+observable, while configure mode makes later editing reachable without exposing
+or fixing the dynamic port.
+
+### Consequences
+
+- No Private start-site file exists solely because setup was displayed.
+- Every saved selection is nonempty and remains bounded and ordered by Shared.
+- Root checkbox state can represent actual readable Private state without
+  allowing Private to elevate applications.
+- Zero-effective normal starts are visible recovery flows rather than no-op UX.
+- Save replaces and immediately opens the server-normalized selection.
+- A dedicated portable configure action reaches root on a new or existing
+  instance without opening normal configured applications.
+- Loopback binding, no CORS, application discovery and serving, persistence,
+  MiniApi, runtime locks/state, stop behavior, server lifetime, and Java 8
+  compatibility remain unchanged.
 
 ---
 

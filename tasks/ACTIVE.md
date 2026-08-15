@@ -6,10 +6,11 @@ This document records the current approved implementation work for Mini Server.
 
 Mini Server v1.0.0 has been released. The approved v1.1 scope is defined by REQ-009, revised REQ-010, and REQ-011.
 
-T-015 and T-016 have been completed. T-018 implementation and local automated
-verification are present, but its required packaged Windows UX/default-browser
-manual verification has not yet been performed, so T-018 remains Planned.
-T-017 remains Planned as the final v1.1 verification task after T-018.
+T-015 and T-016 have been completed. Manual Windows verification of the current
+T-018 implementation exposed interaction defects, so D-030 and revised REQ-010
+require another implementation, automated-verification, packaging, and Windows
+verification pass. T-018 remains Planned. T-017 remains Planned as the final
+v1.1 verification task after the post-D-030 T-018 implementation.
 
 ## T-015 — Implement Default Browser Launch
 
@@ -145,11 +146,11 @@ Acceptance:
 
 Status: Planned
 
-Implementation note: source, automated tests, distribution-compatible code,
-and current documentation implement this task. Status remains Planned because
-the required manual welcome-page, Windows-default-browser, feedback, and
-packaged Windows verification has not been performed in the Linux development
-environment. This note is not T-017 release-verification evidence.
+Implementation note: the current source, tests, launchers, and distribution
+implement the pre-D-030 interaction model. Manual Windows verification found
+that model unacceptable. A separate correction pass must implement revised
+REQ-010 and D-030, then rerun automated and packaged Windows verification.
+The prior Windows attempt did not complete T-018 and is not T-017 evidence.
 
 Related requirements:
 
@@ -169,10 +170,15 @@ Related decisions:
 - D-027 — Shared and Private Start-Site Selection
 - D-028 — Unified Current-User Mini Server Storage
 - D-029 — Interactive Start-Site Selection and First-Run Initialization
+- D-030 — Start-Site Setup, Recovery, and Immediate Apply
 
 Description:
 
-Implement the approved v1.1 current-user storage hierarchy, safe migration of released v1.0 Private application data, and the Mini Server-owned welcome/replacement-selection workflow. Preserve the existing Shared upper bound, canonical ordering, loopback runtime, persistence API, and application-serving boundaries.
+Implement the approved v1.1 current-user storage hierarchy, safe migration of
+released v1.0 Private application data, and the post-D-030 Mini Server-owned
+setup, editing, recovery, and immediate-apply workflow. Preserve the existing
+Shared upper bound, canonical ordering, loopback runtime, persistence API, and
+application-serving boundaries.
 
 Acceptance:
 
@@ -198,34 +204,47 @@ Acceptance:
 - There is no permanent dual write, merge, alias, or fallback after canonical exists.
 - When neither file exists, normal Private persistence uses the canonical location.
 
-### Missing-Private Initialization
+### Explicit First-Run Setup
 
-- After readiness, actual-port discovery, and valid runtime-state publication, a missing Private start-site file triggers initialization on a first or repeated normal start action.
-- The implementation creates `%APPDATA%\MiniServer\Config\` when required.
-- The initial file contains only current valid normalized Shared application names in Shared order.
-- Shared comments, invalid entries, duplicates, and missing applications are not copied.
-- A readable Shared file with no valid applications may initialize an empty Private file.
-- The initialization action opens only `http://127.0.0.1:<active-port>/` through the REQ-009 mechanism and opens no application URL.
-- If Shared is unavailable or cannot be resolved, the server remains active, creates no Private file, opens no application, and opens `/` if practical.
-- Shared-unavailable UI explains why no applications are selectable and does not permit saving.
-- A later start retries initialization while Private remains absent.
+- After readiness, actual-port discovery, and valid runtime-state publication,
+  a first or repeated normal start with missing Private opens only `/`.
+- Displaying setup does not create `%APPDATA%\MiniServer\Config\start-sites.txt`.
+- Current valid Shared applications appear checked in Shared order only as an
+  unsaved proposal.
+- Closing the page without saving leaves Private absent and retries setup on a
+  later normal start.
+- Successful `Save and open` is the only first-run commit point.
+- A readable Shared file with no valid applications creates no Private file,
+  disables saving, and shows an explanatory root state.
+- Missing or unreadable Shared creates no Private file, disables saving, keeps
+  the server active, and shows a distinct approval-unavailable root state.
+- A sidecar lock file is infrastructure and neither represents an active lock
+  by its presence nor completes setup.
 
-### Welcome and Selection Page
+### Root Setup, Editing, and Recovery Page
 
 - `GET /` serves Mini Server-owned infrastructure rather than a directory listing, application, persistence page, file below `www`, or authorization interface.
 - The English-only page has the visible heading `Welcome to Mini Server`.
 - The page is deliberately pleasant, clean, modern, responsive, and readable at normal desktop sizes.
 - Application choices are clearly presented, preferably as attractive checkbox rows or cards.
-- The page has a clear primary `Save selection` action and clear success/error feedback.
+- The page has a clear primary `Save and open` action and clear success/error feedback.
 - HTML, CSS, and JavaScript are self-contained, with no CDN, external font, asset, service, framework, analytics, tracking, or internet dependency.
 - The page displays `%APPDATA%\MiniServer\Config\start-sites.txt` for advanced users.
 - Every `GET /` rereads Shared and lists only current valid Shared-approved applications in Shared order.
 - `_shared`, unsafe entries, invalid entries, missing applications, and physical apps outside Shared are never offered.
-- All available Shared applications are initially selected.
-- The page never reads Private configuration for checkbox state or page choices.
-- The page states clearly that saving creates a new selection and replaces existing personal selection.
+- With missing Private, all available Shared applications are checked only as
+  an unsaved first-run proposal.
+- With readable Private, checked state reflects the current valid
+  Shared/Private intersection; stale entries are hidden and newly Shared
+  applications are unchecked unless already selected.
+- With unreadable Private, the page warns that saved state could not be read,
+  claims no guessed selection, and preselects nothing merely as fallback.
+- The page states clearly that saving replaces and immediately opens the
+  personal selection and also controls future normal starts.
+- Shared-empty and Shared-unavailable states both disable saving and explain
+  why no selection can currently be committed.
 
-### Safe Replacement Save
+### Safe Replacement and Immediate Apply
 
 - `POST /__miniserver/start-sites` is the canonical save route.
 - The route accepts only `application/json` with exactly one `sites` array of strings; malformed or structurally invalid payloads fail without a write.
@@ -234,28 +253,61 @@ Acceptance:
 - Entries outside current valid Shared are discarded and cannot become stored paths, URLs, `_shared`, or invalid names.
 - Accepted membership is deduplicated and written in Shared canonical order regardless of request order.
 - Saving replaces the complete Private file and never merges with or derives the result from prior Private contents.
-- An empty selection produces an existing empty UTF-8 Private file.
+- The UI prevents an empty request, and the server independently requires at
+  least one normalized current valid Shared application.
+- `{"sites":[]}` and a nonempty request normalized to zero both fail without
+  modifying existing Private, with a useful distinction between invalid input
+  and save-time staleness.
 - The replacement write is safe and atomic, and failures are never presented as success.
 - The endpoint writes only the canonical Private start-site file and cannot write Shared configuration, persistence, runtime state, client-selected targets, or arbitrary paths.
 - The route remains on the loopback listener, is handled before application/static routing, adds no CORS, and introduces no general settings API, authentication, or accounts.
-- Saving does not open applications and becomes effective on the next normal start action.
+- Success returns the server-normalized applications and server-generated local
+  targets in Shared order; raw request values never determine post-save URLs.
+- Only after the Private write succeeds, the current root tab navigates to the
+  first normalized application and later normalized applications open in order.
+- Browser-opening failure after a successful write does not roll back Private,
+  stop the server, invalidate runtime state, or block isolated later attempts.
+- The primary action is disabled while saving, and repeated/double submission
+  cannot cause duplicate logical saves or application opening.
+- Save failure retains current checkbox state, shows a concise error, and
+  re-enables another valid attempt.
 
-### Existing Selection and Manual Reselection
+### Existing Selection, Recovery, and Reconfiguration
 
 - A normal start with existing Private rereads Shared and Private and opens their current valid intersection in Shared order.
-- Existing empty Private opens none; Private cannot elevate or reorder; stale entries are ineffective; new Shared entries are not automatically added.
-- Missing, empty, or unreadable Shared with existing Private leaves the server active, opens no application, and does not automatically open `/`.
+- Existing empty/effectively empty Private, wholly stale Private, unreadable
+  Private, and empty or unavailable Shared keep the server active and open `/`
+  as recovery instead of silently opening nothing.
+- Private cannot elevate or reorder; stale entries are ineffective; new Shared
+  entries are not automatically selected.
 - Existing Private is not initialized or rewritten during normal start evaluation.
-- Unreadable existing Private opens none and produces a concise diagnostic.
-- A manual later `GET /` repeats the Shared-only, all-checked fresh replacement workflow.
+- A manual later `GET /` displays context-sensitive checked state under the
+  current Shared upper bound.
 - Both configuration files are reread on each normal start; changes apply on the next start action and no watcher is added.
+- The v1.1 distribution contains `configure.bat`, invoking dedicated configure
+  mode without modifying Private.
+- Configure mode starts the normal detached loopback/dynamic-port server when
+  absent or reuses the current instance and port when active; it never starts a
+  duplicate server and opens only `/` through the Windows default browser.
+- Configure browser failure leaves the server running; manual root navigation
+  remains valid.
 
 ### Verification and Compatibility
 
 - Automated tests cover canonical path resolution, path separation, legacy precedence, successful migration, failed migration preservation, best-effort cleanup, and no dual write.
-- Automated tests cover missing/empty/unreadable Shared initialization, normalized initial files, existing/unreadable Private behavior, first and repeated starts, and actual-port use.
-- HTTP tests cover `GET /`, Shared-only population, Private non-use, empty/unavailable states, strict save payloads, filtering, Shared-order replacement, empty selection, save-time revalidation, failure preservation, and route/path boundaries.
-- Manual verification covers the English welcome experience, responsive presentation, Windows-default-browser first-run opening, clear feedback, and packaged Windows behavior.
+- Automated tests cover no-write first-run setup, close-without-save retry,
+  Shared-empty/unavailable states, context-sensitive root state, zero-effective
+  recovery, first and repeated starts, and actual-port use.
+- HTTP tests cover strict save payloads, minimum-one enforcement, save-time
+  staleness, failure preservation, server-normalized response targets,
+  immediate apply, double-submit behavior, and route/path boundaries.
+- Launcher/startup tests cover configure mode for absent and active instances,
+  current-port reuse, root-only opening, no duplicate server, no configuration
+  write, default-browser use, and browser-failure isolation.
+- Manual Windows verification is rerun against the packaged post-D-030 build and
+  covers first-run commit semantics, close-without-save retry, real saved-state
+  editing, recovery states, immediate Save-and-open, configure.bat, dynamic-port
+  reuse, default-browser behavior, and failure isolation.
 - The Maven build, MiniApi JavaScript tests, and distribution verification pass after implementation.
 - Production code and tests remain Java 8 compatible.
 - Distribution compatibility is preserved and no Private user file is packaged.
@@ -280,14 +332,19 @@ Related decisions:
 - D-027 — Shared and Private Start-Site Selection
 - D-028 — Unified Current-User Mini Server Storage
 - D-029 — Interactive Start-Site Selection and First-Run Initialization
+- D-030 — Start-Site Setup, Recovery, and Immediate Apply
 
 Description:
 
-Perform final end-to-end verification of the complete v1.1 scope and required v1.0 regression behavior after T-018 has implemented revised REQ-010 and REQ-011.
+Perform final end-to-end verification of the complete v1.1 scope and required
+v1.0 regression behavior only after T-018 has implemented post-D-030 REQ-010
+and REQ-011 and rerun packaged Windows verification.
 
 Produce a dedicated v1.1 release-verification document analogous in purpose to the v1.0 verification report but scoped to v1.1 and its necessary regressions.
 
-Any earlier T-017 Phase 1 evidence describes the pre-refinement implementation and is historical input only. It is not final v1.1 release evidence and must be rerun against the post-T-018 implementation.
+Any earlier T-017 Phase 1 evidence or pre-D-030 T-018 Windows attempt is
+historical input only. It is not final v1.1 release evidence and must be rerun
+against the post-D-030 implementation.
 
 Acceptance:
 
@@ -319,37 +376,54 @@ Acceptance:
 - Canonical start-site configuration uses `%APPDATA%\MiniServer\Config\start-sites.txt`.
 - Canonical Private persistence uses `%APPDATA%\MiniServer\Data\<site>\data.json` without a redundant Private data-directory layer.
 - Shared persistence and `%LOCALAPPDATA%\MiniServer\runtime\` remain at their established locations.
-- A user with no Private file receives a normalized file derived from current valid Shared in Shared order after server readiness and state publication.
-- That initialization action opens only the built-in root page and no application URL.
-- Missing or unreadable Shared during initialization creates no Private file, leaves the server active, and exposes the unavailable state through `/` without permitting save.
-- Readable Shared with no valid applications can initialize an empty Private file and shows an empty available list.
+- A user with no Private file reaches root setup after server readiness and state
+  publication without a Private file being created.
+- Closing first-run setup without saving leaves Private absent and retries setup
+  on the next normal start.
+- Missing, unreadable, empty, or effectively empty Shared creates no Private
+  file, leaves the server active, explains the state through `/`, and disables save.
 - `GET /` provides the English-only `Welcome to Mini Server` selection experience.
 - The root UI is pleasant, responsive, self-contained, and has no external service, asset, tracking, or internet dependency.
-- Every root-page load uses only current valid Shared choices in Shared order, initially checks all choices, and never reads Private for checkbox state.
-- The page accurately explains that save replaces rather than displays or merges the personal selection.
+- Every root-page load uses only current valid Shared choices in Shared order.
+- Missing Private checks all choices only as an unsaved proposal; readable
+  Private displays its current valid selection; unreadable Private warns and
+  preselects nothing merely as fallback.
+- The page accurately explains that Save replaces, immediately opens, and
+  retains the personal selection for future normal starts.
 - `POST /__miniserver/start-sites` enforces the canonical JSON payload and loopback infrastructure boundary.
 - Save-time Shared rereading and revalidation prevent stale browser choices from elevating outside current Shared.
-- Saving filters to current Shared membership, preserves Shared order, replaces the complete Private file, and permits an existing empty selection.
+- Saving filters to current Shared membership, preserves Shared order, replaces
+  the complete Private file, and requires at least one normalized application.
+- Empty and normalized-to-empty submissions preserve existing Private content.
 - Saving cannot target Shared configuration, persistence, runtime state, arbitrary paths, or client-selected files and adds no CORS.
-- Saving does not open applications and applies on the next normal start.
-- A later manual `/` visit repeats the same Shared-only, all-checked replacement workflow.
+- Successful save returns and uses only server-normalized local targets, replaces
+  the root tab with the first, and opens later applications in Shared order.
+- Save double-submission is suppressed; failure retains current checkbox state
+  and enables a valid retry.
+- A later manual `/` visit displays context-sensitive current selection state.
 - A Private subset reduces the Shared selection.
 - Private cannot enable an application outside the valid Shared-approved set.
-- An existing empty or effectively empty Private file selects no applications.
+- Existing empty/effectively empty, wholly stale, or unreadable Private opens
+  `/` as recovery instead of silently selecting no applications.
 - Shared order remains effective when Private entries use another order.
 - Duplicate entries in either file retain one effective entry.
 - Comments, empty lines, and surrounding whitespace behave as specified in both files.
 - `_shared` is never opened as an application.
 - Unsafe URL or path entries are never opened.
 - Missing configured applications are ignored without being created.
-- Missing, empty, and unreadable Shared behavior matches the distinct initialization and existing-Private rules in REQ-010.
-- Unreadable Private configuration leaves the server running and opens none rather than falling back to all Shared applications.
-- A repeated start rereads current configuration and applies missing-Private initialization or existing-Private intersection as required.
+- Missing, empty, and unreadable Shared behavior matches the setup/recovery rules in REQ-010.
+- Unreadable Private configuration leaves the server running, opens recovery,
+  and does not guess or preselect all Shared applications.
+- A repeated start rereads current configuration and applies missing-Private
+  setup, nonempty intersection, or zero/broken recovery as required.
 - Shared changes while the server runs affect the next repeated start.
 - Private changes while the server runs affect the next repeated start.
 - Removing a Shared application prevents a stale Private selection from opening it on the next start action.
 - Re-adding a Shared application affects an existing Private selection only when that file contains it.
 - A new Shared application does not enter an existing Private selection automatically.
+- `configure.bat` starts or reuses the one active server, uses its actual port,
+  opens only `/` through the Windows default browser, modifies no selection,
+  and isolates browser failure.
 - Existing canonical Private data takes precedence over legacy data.
 - Legacy v1.0 Private data migrates safely only when canonical data is absent and is removed only after canonical establishment.
 - Migration failure preserves legacy data and fails cleanly; directory cleanup failure after success is nonfatal.
@@ -389,7 +463,7 @@ The approved v1.1 task order is:
 
 1. T-015 — Done
 2. T-016 — Done
-3. T-018 — Planned; implementation and local automation present, required Windows manual verification pending
-4. T-017 — Planned, final verification after T-018
+3. T-018 — Planned; post-D-030 implementation correction and repeat packaged Windows verification required
+4. T-017 — Planned, final verification only after post-D-030 T-018
 
 The completed v1.0 implementation history remains preserved by Git history, the `v1.0.0` tag, `releases/v1.0.md`, and `docs/notes/V1.0-RELEASE-VERIFICATION.md`.

@@ -49,7 +49,11 @@ Mini Server is a lightweight, portable Windows web server for local or trusted i
 
 The server listens only on `127.0.0.1` and lets the operating system select an available TCP port. It is designed for local use and is not intended for exposure to the public internet.
 
-The v1.1 behavior documented below is implemented on the current development branch but has not yet been published as a release; the latest published release remains v1.0.0 until final verification succeeds.
+The latest published release is v1.0.0. The v1.1 development branch is not
+release-ready: manual Windows verification found interaction defects, and the
+approved D-030 start-site UX still requires an implementation correction and
+repeat verification. The brief v1.1 descriptions below state the approved
+target, not currently verified release behavior.
 
 
 ## Features
@@ -84,7 +88,7 @@ The v1.1 behavior documented below is implemented on the current development bra
 4. Double-click `start.bat`.
 5. The command window closes immediately after launching the detached `javaw.exe` process.
 6. On the first v1.1 start without a personal selection, the Windows default browser opens `Welcome to Mini Server`.
-7. Select the applications to open on later starts and save the selection.
+7. Choose at least one application and use `Save and open`; nothing is saved merely by displaying or closing the page.
 8. Closing the browser does not stop Mini Server.
 9. Double-click `stop.bat` when Mini Server is no longer required.
 
@@ -96,7 +100,14 @@ The v1.1 behavior documented below is implemented on the current development bra
 
 The installation owner approves automatic start sites and their order in `<installation-root>\config\start-sites.txt`. Each Windows user has a complete personal selection at `%APPDATA%\MiniServer\Config\start-sites.txt`. Shared approval is always the upper bound: a personal selection can reduce it, but cannot add or reorder applications.
 
-When the personal file is missing, Mini Server creates it from the current valid Shared entries after the local server is ready, then opens only the built-in welcome page. The page initially checks every currently approved application. Saving creates a new personal selection and replaces the entire existing selection; an empty selection is allowed and takes effect on the next start action. Visit `http://127.0.0.1:<active-port>/` later to repeat the same fresh replacement workflow.
+In the approved v1.1 target, a missing personal file opens the built-in setup
+page without creating the file. The page proposes all current valid Shared
+applications, and successful `Save and open` is the explicit commit point. A
+saved selection must contain at least one application, is normalized by the
+server, and opens immediately. Existing selections are shown when readable;
+zero or unreadable effective selections open the page as recovery. A supported
+`configure.bat` workflow for later reconfiguration is part of the pending
+post-D-030 implementation.
 
 Start-site selection controls automatic browser opening only. It is not access control, and valid applications remain directly reachable at their normal URLs.
 
@@ -220,7 +231,11 @@ Mini Server ist ein leichtgewichtiger, portabler Windows-Webserver für lokale o
 
 Der Server lauscht ausschließlich auf `127.0.0.1`. Einen freien TCP-Port wählt das Betriebssystem automatisch aus. Mini Server ist für den lokalen Einsatz vorgesehen und nicht für den öffentlichen Internetbetrieb bestimmt.
 
-Das nachfolgend dokumentierte v1.1-Verhalten ist im aktuellen Entwicklungsstand implementiert, aber noch nicht als Release veröffentlicht. Bis zum erfolgreichen Abschluss der finalen Prüfung bleibt v1.0.0 das zuletzt veröffentlichte Release.
+Das zuletzt veröffentlichte Release ist v1.0.0. Der v1.1-Entwicklungsstand ist
+noch nicht releasebereit: Bei der manuellen Windows-Prüfung wurden
+Interaktionsfehler gefunden. Die freigegebene D-030-Startauswahl muss noch
+korrigiert implementiert und erneut geprüft werden. Die kurzen v1.1-Angaben
+unten beschreiben das Ziel, nicht bereits verifiziertes Releaseverhalten.
 
 
 ## Funktionen
@@ -255,7 +270,7 @@ Das nachfolgend dokumentierte v1.1-Verhalten ist im aktuellen Entwicklungsstand 
 4. `start.bat` doppelklicken.
 5. Das CMD-Fenster schließt sich sofort wieder, nachdem der abgekoppelte `javaw.exe`-Prozess gestartet wurde.
 6. Beim ersten v1.1-Start ohne persönliche Auswahl öffnet der Windows-Standardbrowser `Welcome to Mini Server`.
-7. Die Anwendungen auswählen, die bei späteren Starts geöffnet werden sollen, und die Auswahl speichern.
+7. Mindestens eine Anwendung auswählen und `Save and open` verwenden; allein durch Anzeigen oder Schließen der Seite wird nichts gespeichert.
 8. Der Browser kann geschlossen werden, ohne Mini Server zu beenden.
 9. `stop.bat` doppelklicken, um Mini Server kontrolliert zu beenden.
 
@@ -267,7 +282,15 @@ Das nachfolgend dokumentierte v1.1-Verhalten ist im aktuellen Entwicklungsstand 
 
 Der Eigentümer der Installation legt die für den automatischen Start freigegebenen Anwendungen und ihre Reihenfolge in `<Installationsverzeichnis>\config\start-sites.txt` fest. Jeder Windows-Benutzer besitzt eine vollständige persönliche Auswahl unter `%APPDATA%\MiniServer\Config\start-sites.txt`. Die gemeinsame Freigabe bleibt immer die Obergrenze: Die persönliche Auswahl kann sie reduzieren, aber keine Anwendungen ergänzen oder umsortieren.
 
-Fehlt die persönliche Datei, erzeugt Mini Server sie nach dem erfolgreichen Serverstart aus den aktuell gültigen gemeinsamen Einträgen und öffnet ausschließlich die integrierte Willkommensseite. Dort sind zunächst alle aktuell freigegebenen Anwendungen markiert. Das Speichern erzeugt eine neue persönliche Auswahl und ersetzt die gesamte vorhandene Auswahl; auch eine leere Auswahl ist zulässig und gilt ab der nächsten Startaktion. Unter `http://127.0.0.1:<aktiver-port>/` lässt sich dieser neue Ersetzungsvorgang später erneut aufrufen.
+Im freigegebenen v1.1-Ziel öffnet eine fehlende persönliche Datei die
+integrierte Einrichtungsseite, ohne die Datei bereits anzulegen. Die Seite
+schlägt alle aktuell gültigen gemeinsamen Anwendungen vor; erst ein
+erfolgreiches `Save and open` speichert die Auswahl. Sie muss mindestens eine
+Anwendung enthalten, wird vom Server normalisiert und sofort geöffnet.
+Vorhandene lesbare Auswahlen werden angezeigt; eine leere, wirkungslos
+gewordene oder unlesbare Auswahl führt zur Wiederherstellungsseite. Ein
+unterstützter `configure.bat`-Ablauf für spätere Änderungen gehört zur noch
+ausstehenden D-030-Implementierung.
 
 Die Startauswahl steuert nur das automatische Öffnen im Browser. Sie ist keine Zugriffskontrolle; gültige Anwendungen bleiben über ihre normalen URLs direkt erreichbar.
 

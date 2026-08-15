@@ -16,7 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Automatic browser opening now delegates local Mini Server URLs to the Windows configured default HTTP handler instead of directly selecting Microsoft Edge.
 - Current-user Mini Server storage now uses `%APPDATA%\MiniServer\Config` for configuration and `%APPDATA%\MiniServer\Data\<site>\data.json` for Private application persistence.
-- A missing personal start-site file is initialized from current valid Shared entries after server readiness and opens only the built-in welcome page on that start action.
+- The approved v1.1 start-site UX now makes successful `Save and open` the
+  explicit first-run commit point, requires a nonempty server-normalized
+  selection, adds visible recovery and a supported configure action, and still
+  requires implementation correction and repeat Windows verification.
 
 ## [1.0.0] - 2026-08-15
 
