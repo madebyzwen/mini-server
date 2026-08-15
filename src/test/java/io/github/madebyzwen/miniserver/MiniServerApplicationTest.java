@@ -119,7 +119,7 @@ class MiniServerApplicationTest {
         StartSiteProvider provider = () -> {
             providerCalls.incrementAndGet();
             assertTrue(new RuntimeStateStore(runtimeDirectory).readPort().isPresent());
-            return Collections.singletonList("example");
+            return StartSitePlan.applications(Collections.singletonList("example"));
         };
 
         StartupResult result = own(new MiniServerApplication(
@@ -193,7 +193,7 @@ class MiniServerApplicationTest {
         assertEquals(first.getPort(), repeated.getPort());
         assertEquals(1, serverFactory.creationCount.get());
         assertEquals(
-                Arrays.asList(origin + "/first/", origin + "/second/", origin + "/second/"),
+                Arrays.asList(origin + "/", origin + "/second/"),
                 browserLauncher.urls);
     }
 
@@ -394,7 +394,7 @@ class MiniServerApplicationTest {
                 browserLauncher,
                 () -> {
                     providerCalls.incrementAndGet();
-                    return Collections.singletonList("example");
+                    return StartSitePlan.applications(Collections.singletonList("example"));
                 },
                 output.standard,
                 output.error);
@@ -440,7 +440,7 @@ class MiniServerApplicationTest {
         return new MiniServerApplication(
                 startup(runtimeDirectory, serverFactory),
                 browserLauncher,
-                () -> Collections.singletonList("example"),
+                () -> StartSitePlan.applications(Collections.singletonList("example")),
                 output.standard,
                 output.error);
     }
@@ -459,7 +459,9 @@ class MiniServerApplicationTest {
                     for (String startTarget : startTargets) {
                         sites.add(startTarget);
                     }
-                    return sites;
+                    return sites.isEmpty()
+                            ? StartSitePlan.none(null)
+                            : StartSitePlan.applications(sites);
                 },
                 output.standard,
                 output.error);

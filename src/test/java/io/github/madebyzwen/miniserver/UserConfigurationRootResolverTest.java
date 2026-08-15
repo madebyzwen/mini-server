@@ -27,7 +27,7 @@ class UserConfigurationRootResolverTest {
         Path resolved = UserConfigurationRootResolver.resolve(environment);
 
         assertEquals(
-                temporaryDirectory.resolve("MiniServer/config").normalize(),
+                temporaryDirectory.resolve("MiniServer/Config").normalize(),
                 resolved);
         assertFalse(resolved.toString().contains("MiniServerData"));
         assertFalse(resolved.toFile().exists());

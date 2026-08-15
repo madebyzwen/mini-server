@@ -15,14 +15,20 @@ final class RootRequestRouter implements HttpHandler {
     private final HttpHandler localStopHandler;
     private final HttpHandler apiHandler;
     private final HttpHandler staticFileHandler;
+    private final HttpHandler welcomePageHandler;
+    private final HttpHandler startSiteSelectionHandler;
 
     RootRequestRouter(
             HttpHandler localStopHandler,
             HttpHandler apiHandler,
-            HttpHandler staticFileHandler) {
+            HttpHandler staticFileHandler,
+            HttpHandler welcomePageHandler,
+            HttpHandler startSiteSelectionHandler) {
         this.localStopHandler = localStopHandler;
         this.apiHandler = apiHandler;
         this.staticFileHandler = staticFileHandler;
+        this.welcomePageHandler = welcomePageHandler;
+        this.startSiteSelectionHandler = startSiteSelectionHandler;
     }
 
     @Override
@@ -30,6 +36,11 @@ final class RootRequestRouter implements HttpHandler {
         String rawPath = exchange.getRequestURI().getRawPath();
         if (LocalStopHandler.PATH.equals(rawPath)) {
             localStopHandler.handle(exchange);
+        } else if (StartSiteSelectionHandler.PATH.equals(rawPath)
+                && startSiteSelectionHandler != null) {
+            startSiteSelectionHandler.handle(exchange);
+        } else if ("/".equals(rawPath) && welcomePageHandler != null) {
+            welcomePageHandler.handle(exchange);
         } else if (isApiRequest(rawPath)) {
             apiHandler.handle(exchange);
         } else {

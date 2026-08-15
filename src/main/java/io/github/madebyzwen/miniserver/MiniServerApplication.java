@@ -46,10 +46,18 @@ final class MiniServerApplication {
             output.println("Mini Server started on 127.0.0.1:" + result.getPort() + ".");
         }
 
-        List<LocalServerUrl> localServerUrls = new ArrayList<LocalServerUrl>();
+        List<String> urls = new ArrayList<String>();
         try {
-            for (String startSite : startSiteProvider.loadStartSites()) {
-                localServerUrls.add(new LocalServerUrl(startSite));
+            StartSitePlan plan = startSiteProvider.planStartSites();
+            if (plan.getDiagnostic() != null) {
+                errorOutput.println(plan.getDiagnostic());
+            }
+            if (plan.getKind() == StartSitePlan.Kind.ROOT) {
+                urls.add(LocalServerUrl.rootForPort(result.getPort()));
+            } else if (plan.getKind() == StartSitePlan.Kind.APPLICATIONS) {
+                for (String startSite : plan.getSites()) {
+                    urls.add(new LocalServerUrl(startSite).forPort(result.getPort()));
+                }
             }
         } catch (IOException | RuntimeException exception) {
             errorOutput.println(
@@ -58,8 +66,7 @@ final class MiniServerApplication {
             return result;
         }
 
-        for (LocalServerUrl localServerUrl : localServerUrls) {
-            String url = localServerUrl.forPort(result.getPort());
+        for (String url : urls) {
             try {
                 browserLauncher.open(url);
             } catch (IOException | RuntimeException exception) {

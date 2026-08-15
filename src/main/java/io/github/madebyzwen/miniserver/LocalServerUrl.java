@@ -30,4 +30,11 @@ final class LocalServerUrl {
         }
         return ORIGIN_PREFIX + activePort + encodedStartTarget;
     }
+
+    static String rootForPort(int activePort) {
+        if (activePort < 1 || activePort > 65535) {
+            throw new IllegalArgumentException("The active port is outside the TCP port range.");
+        }
+        return ORIGIN_PREFIX + activePort + "/";
+    }
 }

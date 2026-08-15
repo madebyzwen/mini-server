@@ -46,10 +46,11 @@ public final class MiniServer {
 
     private static int start() {
         try {
+            ConfiguredStartSiteProvider startSites = new ConfiguredStartSiteProvider();
             StartupResult result = new MiniServerApplication(
-                    new MiniServerStartup(),
+                    new MiniServerStartup(startSites),
                     new WindowsDefaultBrowserLauncher(),
-                    new ConfiguredStartSiteProvider(),
+                    startSites,
                     System.out,
                     System.err).start();
             if (result.isExistingInstance()) {

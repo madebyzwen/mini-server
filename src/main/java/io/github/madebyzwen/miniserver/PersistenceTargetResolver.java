@@ -23,26 +23,47 @@ final class PersistenceTargetResolver {
                     return PrivateDataRootResolver.resolve();
                 }
             };
+    private static final PrivateDataRootProvider PRODUCTION_LEGACY_PRIVATE_ROOT =
+            new PrivateDataRootProvider() {
+                @Override
+                public Path resolve() throws IOException {
+                    return LegacyPrivateDataRootResolver.resolve();
+                }
+            };
 
     private final Path webRoot;
     private final PrivateDataRootProvider privateDataRootProvider;
+    private final PrivateDataRootProvider legacyPrivateDataRootProvider;
 
     PersistenceTargetResolver(Path webRoot) throws IOException {
-        this(webRoot, PRODUCTION_PRIVATE_ROOT);
+        this(webRoot, PRODUCTION_PRIVATE_ROOT, PRODUCTION_LEGACY_PRIVATE_ROOT);
     }
 
     PersistenceTargetResolver(Path webRoot, Path privateDataRoot) throws IOException {
-        this(webRoot, fixedPrivateRoot(privateDataRoot));
+        this(webRoot, fixedPrivateRoot(privateDataRoot), null);
+    }
+
+    PersistenceTargetResolver(Path webRoot, Path privateDataRoot, Path legacyPrivateDataRoot)
+            throws IOException {
+        this(webRoot, fixedPrivateRoot(privateDataRoot), fixedPrivateRoot(legacyPrivateDataRoot));
     }
 
     PersistenceTargetResolver(
             Path webRoot,
             PrivateDataRootProvider privateDataRootProvider) throws IOException {
+        this(webRoot, privateDataRootProvider, null);
+    }
+
+    PersistenceTargetResolver(
+            Path webRoot,
+            PrivateDataRootProvider privateDataRootProvider,
+            PrivateDataRootProvider legacyPrivateDataRootProvider) throws IOException {
         if (!Files.isDirectory(webRoot) || !Files.isReadable(webRoot)) {
             throw new IOException("The Mini Server web root is not an accessible directory.");
         }
         this.webRoot = webRoot.toRealPath();
         this.privateDataRootProvider = privateDataRootProvider;
+        this.legacyPrivateDataRootProvider = legacyPrivateDataRootProvider;
     }
 
     Optional<ResolvedPersistenceTarget> resolve(String rawPath) throws IOException {
@@ -95,6 +116,7 @@ final class PersistenceTargetResolver {
         }
 
         Path dataFile;
+        Path legacyDataFile = null;
         if (scope == PersistenceScope.SHARED) {
             dataFile = siteDirectory.resolve(DATA_DIRECTORY).resolve(DATA_FILE).normalize();
             if (!dataFile.startsWith(webRoot)) {
@@ -104,11 +126,21 @@ final class PersistenceTargetResolver {
             Path privateDataRoot = resolvePrivateDataRoot();
             dataFile = privateDataRoot
                     .resolve(components[0])
-                    .resolve(DATA_DIRECTORY)
                     .resolve(DATA_FILE)
                     .normalize();
             if (!dataFile.startsWith(privateDataRoot)) {
                 return Optional.empty();
+            }
+            if (legacyPrivateDataRootProvider != null) {
+                Path legacyRoot = resolvePrivateDataRoot(legacyPrivateDataRootProvider);
+                legacyDataFile = legacyRoot
+                        .resolve(components[0])
+                        .resolve(DATA_DIRECTORY)
+                        .resolve(DATA_FILE)
+                        .normalize();
+                if (!legacyDataFile.startsWith(legacyRoot)) {
+                    return Optional.empty();
+                }
             }
         }
 
@@ -116,11 +148,17 @@ final class PersistenceTargetResolver {
                 components[0],
                 scope,
                 components[3],
-                dataFile));
+                dataFile,
+                legacyDataFile));
     }
 
     private Path resolvePrivateDataRoot() throws IOException {
-        Path privateDataRoot = privateDataRootProvider.resolve();
+        return resolvePrivateDataRoot(privateDataRootProvider);
+    }
+
+    private static Path resolvePrivateDataRoot(PrivateDataRootProvider provider)
+            throws IOException {
+        Path privateDataRoot = provider.resolve();
         if (privateDataRoot == null) {
             throw new IOException("The private data root is unavailable.");
         }

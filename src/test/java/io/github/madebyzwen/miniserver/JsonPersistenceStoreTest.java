@@ -41,12 +41,14 @@ class JsonPersistenceStoreTest {
 
     private Path webRoot;
     private Path privateDataRoot;
+    private Path legacyPrivateDataRoot;
     private JsonPersistenceStore store;
 
     @BeforeEach
     void createPersistenceContext() throws IOException {
         webRoot = temporaryDirectory.resolve("www");
-        privateDataRoot = temporaryDirectory.resolve("profile/MiniServerData");
+        privateDataRoot = temporaryDirectory.resolve("profile/MiniServer/Data");
+        legacyPrivateDataRoot = temporaryDirectory.resolve("profile/LegacyMiniServerData");
         Files.createDirectories(webRoot.resolve("example"));
         store = new JsonPersistenceStore();
     }
@@ -88,8 +90,136 @@ class JsonPersistenceStoreTest {
                 webRoot.resolve("example/data/data.json").toRealPath(),
                 shared.getDataFile().toRealPath());
         assertEquals(
-                privateDataRoot.resolve("example/data/data.json").toRealPath(),
+                privateDataRoot.resolve("example/data.json").toRealPath(),
                 privateTarget.getDataFile().toRealPath());
+    }
+
+    @Test
+    void privateReadMigratesLegacyBytesBeforeReadingAndCleansEmptyLegacyDirectories()
+            throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
+        String legacyBytes = "{\n  \"profile\": {\"name\": \"Sven\"}\n}\n";
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), legacyBytes);
+
+        assertEquals("Sven", store.readAll(target)
+                .getAsJsonObject("profile").get("name").getAsString());
+        assertEquals(legacyBytes, readText(target.getDataFile()));
+        assertFalse(Files.exists(target.getLegacyDataFile()));
+        assertFalse(Files.exists(legacyPrivateDataRoot));
+    }
+
+    @Test
+    void privateWriteMigratesLegacyDocumentThenUpdatesOnlyCanonicalData() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "write");
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), "{\"preserved\":1,\"changed\":\"old\"}");
+
+        store.write(target, section("changed", "new"));
+
+        assertEquals(1, store.readAll(target).get("preserved").getAsInt());
+        assertEquals("new", store.readAll(target).get("changed").getAsString());
+        assertFalse(Files.exists(target.getLegacyDataFile()));
+    }
+
+    @Test
+    void canonicalPrivateDataWinsAndLegacyDataIsNotTouched() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
+        Files.createDirectories(target.getDataFile().getParent());
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getDataFile(), "{\"source\":\"canonical\"}");
+        writeText(target.getLegacyDataFile(), "{\"source\":\"legacy\"}");
+
+        assertEquals("canonical", store.readAll(target).get("source").getAsString());
+        assertTrue(Files.exists(target.getLegacyDataFile()));
+        assertEquals("{\"source\":\"legacy\"}", readText(target.getLegacyDataFile()));
+    }
+
+    @Test
+    @Timeout(5)
+    void migrationRechecksCanonicalAfterWaitingForItsLock() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
+        Files.createDirectories(target.getDataFile().getParent());
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), "{\"source\":\"legacy\"}");
+        Path lockFile = store.lockFileFor(target);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try (FileChannel channel = FileChannel.open(
+                lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+             FileLock ignored = channel.lock()) {
+            Future<JsonObject> read = executor.submit(() -> store.readAll(target));
+            Thread.sleep(50L);
+            writeText(target.getDataFile(), "{\"source\":\"canonical\"}");
+            ignored.release();
+            assertEquals("canonical", read.get().get("source").getAsString());
+        } finally {
+            executor.shutdownNow();
+        }
+        assertTrue(Files.exists(target.getLegacyDataFile()));
+    }
+
+    @Test
+    void unsafeLegacyPathFailsWithoutDestroyingLegacySource() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
+        Path outside = temporaryDirectory.resolve("outside-legacy");
+        Files.createDirectories(outside);
+        writeText(outside.resolve("data.json"), "{\"legacy\":true}");
+        Files.createDirectories(legacyPrivateDataRoot.resolve("example"));
+        createDirectoryLink(legacyPrivateDataRoot.resolve("example/data"), outside);
+
+        assertThrows(PersistenceException.class, () -> store.readAll(target));
+        assertTrue(Files.exists(outside.resolve("data.json")));
+        assertFalse(Files.exists(target.getDataFile()));
+    }
+
+    @Test
+    void invalidMigratedJsonRemainsByteExactAndFailsNormalValidation() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
+        String invalid = "{\"broken\": }\n";
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), invalid);
+
+        PersistenceException failure = assertThrows(
+                PersistenceException.class,
+                () -> store.readAll(target));
+
+        assertEquals(PersistenceException.Reason.INVALID_DATA, failure.getReason());
+        assertEquals(invalid, readText(target.getDataFile()));
+        assertFalse(Files.exists(target.getLegacyDataFile()));
+    }
+
+    @Test
+    void successfulMigrationLeavesUnrelatedLegacyContentAndCleanupFailureIsNonfatal()
+            throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), "{\"migrated\":true}");
+        Path unrelated = legacyPrivateDataRoot.resolve("keep.txt");
+        writeText(unrelated, "user content");
+
+        assertTrue(store.readAll(target).get("migrated").getAsBoolean());
+
+        assertFalse(Files.exists(target.getLegacyDataFile()));
+        assertTrue(Files.exists(unrelated));
+        assertEquals("user content", readText(unrelated));
+        assertTrue(Files.isDirectory(legacyPrivateDataRoot));
+    }
+
+    @Test
+    void laterPrivateOperationsNeverWriteOrFallBackToRecreatedLegacyData() throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "write");
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), "{\"source\":\"original legacy\"}");
+        store.write(target, section("canonicalOnly", true));
+
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), "{\"source\":\"new legacy\"}");
+        store.write(target, section("later", true));
+
+        assertEquals("original legacy", store.readAll(target).get("source").getAsString());
+        assertTrue(store.readAll(target).get("canonicalOnly").getAsBoolean());
+        assertTrue(store.readAll(target).get("later").getAsBoolean());
+        assertEquals("{\"source\":\"new legacy\"}", readText(target.getLegacyDataFile()));
     }
 
     @Test
@@ -563,7 +693,7 @@ class JsonPersistenceStoreTest {
     }
 
     private PersistenceTargetResolver resolver() throws IOException {
-        return new PersistenceTargetResolver(webRoot, privateDataRoot);
+        return new PersistenceTargetResolver(webRoot, privateDataRoot, legacyPrivateDataRoot);
     }
 
     private static JsonObject section(String name, String value) {

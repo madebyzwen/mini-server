@@ -14,9 +14,9 @@ Installation and startup
 
 No installer or administrator rights are normally required. Mini Server
 listens only on 127.0.0.1 and lets Windows select an available port.
-The Windows default browser should open the example application automatically.
-The applications opened automatically are controlled by the start-site
-configuration described below.
+On a first v1.1 start without a personal selection, the Windows default browser
+opens the built-in Welcome to Mini Server page. Select and save the applications
+that should open on later start actions.
 If the browser cannot be opened, Mini Server remains active and its runtime
 state remains valid. start.bat does not wait for startup or browser-opening
 confirmation because the server process is detached.
@@ -38,13 +38,14 @@ It centrally approves applications for automatic opening and defines their
 canonical opening order. The standard distribution contains example as its
 active entry.
 
-The optional current-user configuration is:
+The current-user selection is:
 
-    %APPDATA%\MiniServer\config\start-sites.txt
+    %APPDATA%\MiniServer\Config\start-sites.txt
 
 Private configuration may reduce the Shared selection. It cannot enable an
 application absent from Shared and cannot reorder Shared applications. When
-the Private file is missing, all valid Shared entries are selected. An existing
+the Private file is missing, Mini Server safely initializes it from the current
+valid Shared entries and opens only the built-in root welcome page. An existing
 empty Private file selects none.
 
 Both files use UTF-8 text with one first-level application name per line. Empty
@@ -55,6 +56,10 @@ Invalid entries and entries for missing applications are ignored.
 Changes to either file apply the next time start.bat is invoked. The active
 server does not need to be restarted. Start-site selection controls automatic
 browser opening only; it is not application access control.
+
+Visiting http://127.0.0.1:<active-port>/ later opens the same fresh selection
+page. It initially selects all current valid Shared entries; saving replaces the
+complete personal selection rather than displaying or merging the old one.
 
 Stopping Mini Server
 --------------------
@@ -76,7 +81,11 @@ Shared data is stored at:
 
 Private user data is stored at:
 
-    %APPDATA%\MiniServerData\<site>\data\data.json
+    %APPDATA%\MiniServer\Data\<site>\data.json
 
 Persistence data is accessed through Mini Server's explicitly scoped API;
 shared data directories are not served as normal static files.
+
+When the canonical Private file is absent, released v1.0 data at
+%APPDATA%\MiniServerData\<site>\data\data.json is migrated safely before normal
+Private use. Existing canonical data always wins.

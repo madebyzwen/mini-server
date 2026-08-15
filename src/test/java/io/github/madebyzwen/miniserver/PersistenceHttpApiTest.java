@@ -63,13 +63,14 @@ class PersistenceHttpApiTest {
     @BeforeEach
     void startServer() throws Exception {
         webRoot = temporaryDirectory.resolve("www");
-        privateDataRoot = temporaryDirectory.resolve("profile/MiniServerData");
+        privateDataRoot = temporaryDirectory.resolve("profile/MiniServer/Data");
         Files.createDirectories(webRoot.resolve("example"));
         Files.createDirectories(webRoot.resolve("_shared"));
         resolver = new PersistenceTargetResolver(webRoot, privateDataRoot);
         store = new JsonPersistenceStore(75L, 5L);
         diagnosticBytes = new ByteArrayOutputStream();
         diagnostics = new ConsoleDiagnostics(new PrintStream(diagnosticBytes, true, "UTF-8"));
+        ConfiguredStartSiteProvider startSites = testStartSites();
 
         server = HttpServer.create(
                 new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0),
@@ -79,7 +80,9 @@ class PersistenceHttpApiTest {
                 new RootRequestRouter(
                         new LocalStopHandler(UUID.randomUUID().toString()),
                         new PersistenceApiHandler(resolver, store, diagnostics),
-                        new StaticFileHandler(webRoot)));
+                        new StaticFileHandler(webRoot),
+                        new WelcomePageHandler(startSites),
+                        new StartSiteSelectionHandler(startSites)));
         server.start();
     }
 
@@ -114,7 +117,7 @@ class PersistenceHttpApiTest {
                 "{\"scope\":\"private\"}",
                 request("GET", "/example/api/private/readAll").bodyText());
         assertTrue(Files.isRegularFile(webRoot.resolve("example/data/data.json")));
-        assertTrue(Files.isRegularFile(privateDataRoot.resolve("example/data/data.json")));
+        assertTrue(Files.isRegularFile(privateDataRoot.resolve("example/data.json")));
     }
 
     @Test
@@ -228,7 +231,7 @@ class PersistenceHttpApiTest {
                 "application/json",
                 "{\"profile\":{\"enabled\":true}}"));
         assertTrue(Files.isRegularFile(
-                privateDataRoot.resolve("my-app/data/data.json")));
+                privateDataRoot.resolve("my-app/data.json")));
         assertEquals(
                 JsonParser.parseString("{\"enabled\":true}"),
                 JsonParser.parseString(request(
@@ -254,7 +257,7 @@ class PersistenceHttpApiTest {
                 request("GET", "/example/api/private/read?section=missing"),
                 404,
                 "SECTION_NOT_FOUND");
-        assertFalse(Files.exists(privateDataRoot.resolve("example/data/data.json")));
+        assertFalse(Files.exists(privateDataRoot.resolve("example/data.json")));
     }
 
     @Test
@@ -401,7 +404,7 @@ class PersistenceHttpApiTest {
                 store.readAll(resolved(PersistenceScope.SHARED, "readAll")));
         assertNoContent(request("DELETE", "/example/api/shared/clear"));
         assertNoContent(request("DELETE", "/example/api/private/clear"));
-        assertFalse(Files.exists(privateDataRoot.resolve("example/data/data.json")));
+        assertFalse(Files.exists(privateDataRoot.resolve("example/data.json")));
     }
 
     @Test
@@ -705,6 +708,7 @@ class PersistenceHttpApiTest {
         server = HttpServer.create(
                 new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0),
                 0);
+        ConfiguredStartSiteProvider startSites = testStartSites();
         server.createContext(
                 "/",
                 new RootRequestRouter(
@@ -713,8 +717,17 @@ class PersistenceHttpApiTest {
                                 targetResolver,
                                 persistenceStore,
                                 diagnostics),
-                        new StaticFileHandler(webRoot)));
+                        new StaticFileHandler(webRoot),
+                        new WelcomePageHandler(startSites),
+                        new StartSiteSelectionHandler(startSites)));
         server.start();
+    }
+
+    private ConfiguredStartSiteProvider testStartSites() {
+        return new ConfiguredStartSiteProvider(
+                webRoot,
+                temporaryDirectory.resolve("config/start-sites.txt"),
+                temporaryDirectory.resolve("profile/MiniServer/Config/start-sites.txt"));
     }
 
     private String diagnosticText() {

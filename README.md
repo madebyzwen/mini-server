@@ -49,6 +49,8 @@ Mini Server is a lightweight, portable Windows web server for local or trusted i
 
 The server listens only on `127.0.0.1` and lets the operating system select an available TCP port. It is designed for local use and is not intended for exposure to the public internet.
 
+The v1.1 behavior documented below is implemented on the current development branch but has not yet been published as a release; the latest published release remains v1.0.0 until final verification succeeds.
+
 
 ## Features
 
@@ -60,7 +62,8 @@ The server listens only on `127.0.0.1` and lets the operating system select an a
 - One active instance per local user/computer context
 - Detached startup through `start.bat` and `javaw.exe`
 - Graceful shutdown through `stop.bat`
-- Automatic Microsoft Edge launch for v1
+- Automatic launch through the Windows default browser
+- Built-in first-run welcome and start-site selection page
 - Repeated starts reuse the active local instance and port
 - Multiple hosted applications below `www/`
 - Shared `MiniApi` browser library
@@ -72,7 +75,6 @@ The server listens only on `127.0.0.1` and lets the operating system select an a
 
 - Windows
 - A Java 8 compatible runtime available on `PATH`
-- Microsoft Edge for the automatic v1 browser launch
 
 ## Download & Quick Start
 
@@ -81,13 +83,22 @@ The server listens only on `127.0.0.1` and lets the operating system select an a
 3. Extract the complete ZIP to the desired location.
 4. Double-click `start.bat`.
 5. The command window closes immediately after launching the detached `javaw.exe` process.
-6. Microsoft Edge opens the example application automatically.
-7. Closing Edge does not stop Mini Server.
-8. Double-click `stop.bat` when Mini Server is no longer required.
+6. On the first v1.1 start without a personal selection, the Windows default browser opens `Welcome to Mini Server`.
+7. Select the applications to open on later starts and save the selection.
+8. Closing the browser does not stop Mini Server.
+9. Double-click `stop.bat` when Mini Server is no longer required.
 
 `start.bat` launches the existing `MiniServer` entry point through `javaw.exe`; the batch window is not tied to the server lifetime. Mini Server continues running after that window disappears. Starting it again reuses the active local server and its dynamic port instead of creating a second HTTP server.
 
-`stop.bat` gracefully stops the active local instance. Running it when Mini Server is already stopped is harmless. The complete start, repeated-start, and stop workflow has been manually verified on Windows.
+`stop.bat` gracefully stops the active local instance. Running it when Mini Server is already stopped is harmless. The released v1.0 start, repeated-start, and stop workflow was manually verified on Windows; the new v1.1 welcome flow still requires its planned Windows verification.
+
+## Automatic start sites
+
+The installation owner approves automatic start sites and their order in `<installation-root>\config\start-sites.txt`. Each Windows user has a complete personal selection at `%APPDATA%\MiniServer\Config\start-sites.txt`. Shared approval is always the upper bound: a personal selection can reduce it, but cannot add or reorder applications.
+
+When the personal file is missing, Mini Server creates it from the current valid Shared entries after the local server is ready, then opens only the built-in welcome page. The page initially checks every currently approved application. Saving creates a new personal selection and replaces the entire existing selection; an empty selection is allowed and takes effect on the next start action. Visit `http://127.0.0.1:<active-port>/` later to repeat the same fresh replacement workflow.
+
+Start-site selection controls automatic browser opening only. It is not access control, and valid applications remain directly reachable at their normal URLs.
 
 ## Applications
 
@@ -123,12 +134,14 @@ Shared data is stored with the application:
 Private data is stored in the current Windows user profile:
 
 ```text
-%APPDATA%\MiniServerData\<site>\data\data.json
+%APPDATA%\MiniServer\Data\<site>\data.json
 ```
 
 Shared data can travel with an application and can be shared when the installation directory itself is shared. Private data belongs to the current Windows user profile. Here, “private” describes the storage location and scope; it is not authentication or authorization isolation between hostile applications.
 
 Persistence data is accessed through the Mini Server API and is not served as ordinary application static content.
+
+On first Private access after updating from v1.0, Mini Server safely migrates existing data from `%APPDATA%\MiniServerData\<site>\data\data.json` when no canonical v1.1 file exists. An existing canonical file always wins.
 
 ## Project structure
 
@@ -142,6 +155,8 @@ mini-server-<version>\
 ├── start.bat
 ├── stop.bat
 ├── README.txt
+├── config\
+│   └── start-sites.txt
 └── www\
     ├── _shared\
     │   └── mini-api.js
@@ -205,6 +220,8 @@ Mini Server ist ein leichtgewichtiger, portabler Windows-Webserver für lokale o
 
 Der Server lauscht ausschließlich auf `127.0.0.1`. Einen freien TCP-Port wählt das Betriebssystem automatisch aus. Mini Server ist für den lokalen Einsatz vorgesehen und nicht für den öffentlichen Internetbetrieb bestimmt.
 
+Das nachfolgend dokumentierte v1.1-Verhalten ist im aktuellen Entwicklungsstand implementiert, aber noch nicht als Release veröffentlicht. Bis zum erfolgreichen Abschluss der finalen Prüfung bleibt v1.0.0 das zuletzt veröffentlichte Release.
+
 
 ## Funktionen
 
@@ -216,7 +233,8 @@ Der Server lauscht ausschließlich auf `127.0.0.1`. Einen freien TCP-Port wählt
 - Eine aktive Instanz pro lokalem Benutzer-/Computer-Kontext
 - Abgekoppelter Start über `start.bat` und `javaw.exe`
 - Kontrolliertes Beenden über `stop.bat`
-- Automatischer Start von Microsoft Edge in v1
+- Automatisches Öffnen über den Windows-Standardbrowser
+- Integrierte Willkommens- und Startauswahlseite für den ersten Start
 - Wiederholter Start verwendet die aktive lokale Instanz und deren Port
 - Mehrere Anwendungen unterhalb von `www/`
 - Gemeinsame Browserbibliothek `MiniApi`
@@ -228,7 +246,6 @@ Der Server lauscht ausschließlich auf `127.0.0.1`. Einen freien TCP-Port wählt
 
 - Windows
 - Eine Java-8-kompatible Laufzeitumgebung im `PATH`
-- Microsoft Edge für den automatischen Browserstart in v1
 
 ## Download & Schnellstart
 
@@ -237,13 +254,22 @@ Der Server lauscht ausschließlich auf `127.0.0.1`. Einen freien TCP-Port wählt
 3. Die ZIP-Datei vollständig am gewünschten Ort entpacken.
 4. `start.bat` doppelklicken.
 5. Das CMD-Fenster schließt sich sofort wieder, nachdem der abgekoppelte `javaw.exe`-Prozess gestartet wurde.
-6. Microsoft Edge öffnet automatisch die Beispielanwendung.
-7. Edge kann geschlossen werden, ohne Mini Server zu beenden.
-8. `stop.bat` doppelklicken, um Mini Server kontrolliert zu beenden.
+6. Beim ersten v1.1-Start ohne persönliche Auswahl öffnet der Windows-Standardbrowser `Welcome to Mini Server`.
+7. Die Anwendungen auswählen, die bei späteren Starts geöffnet werden sollen, und die Auswahl speichern.
+8. Der Browser kann geschlossen werden, ohne Mini Server zu beenden.
+9. `stop.bat` doppelklicken, um Mini Server kontrolliert zu beenden.
 
 `start.bat` startet den vorhandenen `MiniServer`-Einstiegspunkt über `javaw.exe`. Das Batchfenster ist nicht an die Laufzeit des Servers gekoppelt; Mini Server läuft weiter, nachdem das Fenster verschwunden ist. Ein erneuter Start verwendet die bereits aktive lokale Instanz und deren dynamischen Port, anstatt einen zweiten HTTP-Server zu starten.
 
-`stop.bat` beendet die aktive lokale Instanz kontrolliert. Der Aufruf ist auch dann harmlos, wenn Mini Server bereits beendet ist. Der vollständige Ablauf für Start, wiederholten Start und Stopp wurde unter Windows manuell geprüft.
+`stop.bat` beendet die aktive lokale Instanz kontrolliert. Der Aufruf ist auch dann harmlos, wenn Mini Server bereits beendet ist. Der veröffentlichte v1.0-Ablauf für Start, wiederholten Start und Stopp wurde unter Windows manuell geprüft; für den neuen v1.1-Willkommensablauf steht die geplante Windows-Prüfung noch aus.
+
+## Automatische Startanwendungen
+
+Der Eigentümer der Installation legt die für den automatischen Start freigegebenen Anwendungen und ihre Reihenfolge in `<Installationsverzeichnis>\config\start-sites.txt` fest. Jeder Windows-Benutzer besitzt eine vollständige persönliche Auswahl unter `%APPDATA%\MiniServer\Config\start-sites.txt`. Die gemeinsame Freigabe bleibt immer die Obergrenze: Die persönliche Auswahl kann sie reduzieren, aber keine Anwendungen ergänzen oder umsortieren.
+
+Fehlt die persönliche Datei, erzeugt Mini Server sie nach dem erfolgreichen Serverstart aus den aktuell gültigen gemeinsamen Einträgen und öffnet ausschließlich die integrierte Willkommensseite. Dort sind zunächst alle aktuell freigegebenen Anwendungen markiert. Das Speichern erzeugt eine neue persönliche Auswahl und ersetzt die gesamte vorhandene Auswahl; auch eine leere Auswahl ist zulässig und gilt ab der nächsten Startaktion. Unter `http://127.0.0.1:<aktiver-port>/` lässt sich dieser neue Ersetzungsvorgang später erneut aufrufen.
+
+Die Startauswahl steuert nur das automatische Öffnen im Browser. Sie ist keine Zugriffskontrolle; gültige Anwendungen bleiben über ihre normalen URLs direkt erreichbar.
 
 ## Anwendungen
 
@@ -279,12 +305,14 @@ Gemeinsame Daten werden zusammen mit der Anwendung gespeichert:
 Private Daten liegen im Profil des aktuellen Windows-Benutzers:
 
 ```text
-%APPDATA%\MiniServerData\<site>\data\data.json
+%APPDATA%\MiniServer\Data\<site>\data.json
 ```
 
 Gemeinsame Daten können mit einer Anwendung weitergegeben werden und stehen gemeinsam zur Verfügung, wenn das Installationsverzeichnis selbst geteilt wird. Private Daten gehören zum Profil des aktuellen Windows-Benutzers. „Privat“ beschreibt hier Speicherort und Geltungsbereich, nicht die Authentifizierung oder Autorisierung gegeneinander abgeschotteter Anwendungen.
 
 Persistenzdaten werden über die Mini-Server-API gelesen und geschrieben. Sie werden nicht als gewöhnliche statische Anwendungsinhalte ausgeliefert.
+
+Beim ersten privaten Datenzugriff nach einem Update von v1.0 migriert Mini Server vorhandene Daten sicher aus `%APPDATA%\MiniServerData\<site>\data\data.json`, sofern noch keine kanonische v1.1-Datei existiert. Eine vorhandene kanonische Datei hat immer Vorrang.
 
 ## Projektstruktur
 
@@ -298,6 +326,8 @@ mini-server-<version>\
 ├── start.bat
 ├── stop.bat
 ├── README.txt
+├── config\
+│   └── start-sites.txt
 └── www\
     ├── _shared\
     │   └── mini-api.js

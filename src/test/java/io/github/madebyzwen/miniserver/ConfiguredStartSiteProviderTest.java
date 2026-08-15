@@ -231,6 +231,164 @@ class ConfiguredStartSiteProviderTest {
         assertTrue(provider().loadStartSites().isEmpty());
     }
 
+    @Test
+    void missingPrivateIsInitializedFromSharedAndPlansOnlyTheRoot() throws Exception {
+        createApplications("first", "second");
+        write(sharedConfiguration, "first", "second");
+
+        StartSitePlan plan = provider().planStartSites();
+
+        assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
+        assertTrue(plan.getSites().isEmpty());
+        assertEquals(
+                Arrays.asList("first", "second"),
+                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void readableEmptySharedInitializesAnEmptyPrivateFileAndPlansRoot() throws Exception {
+        write(sharedConfiguration);
+
+        StartSitePlan plan = provider().planStartSites();
+
+        assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
+        assertTrue(Files.isRegularFile(privateConfiguration));
+        assertEquals(0L, Files.size(privateConfiguration));
+    }
+
+    @Test
+    void unavailableSharedPlansRootOnlyWhenPrivateIsMissing() throws Exception {
+        StartSitePlan first = provider().planStartSites();
+        assertEquals(StartSitePlan.Kind.ROOT, first.getKind());
+        assertFalse(Files.exists(privateConfiguration));
+
+        write(privateConfiguration, "first");
+        StartSitePlan existing = provider().planStartSites();
+        assertEquals(StartSitePlan.Kind.NONE, existing.getKind());
+    }
+
+    @Test
+    void existingPrivatePlansOnlyCurrentSharedIntersection() throws Exception {
+        createApplications("first", "second", "third");
+        write(sharedConfiguration, "first", "second", "third");
+        write(privateConfiguration, "third", "first", "unapproved");
+
+        StartSitePlan plan = provider().planStartSites();
+
+        assertEquals(StartSitePlan.Kind.APPLICATIONS, plan.getKind());
+        assertEquals(Arrays.asList("first", "third"), plan.getSites());
+    }
+
+    @Test
+    void saveReplacesSelectionWithSharedOrderedApprovedDeduplicatedEntries()
+            throws Exception {
+        createApplications("first", "second", "third");
+        write(sharedConfiguration, "first", "second", "third");
+        write(privateConfiguration, "old");
+
+        assertEquals(
+                Arrays.asList("first", "third"),
+                provider().saveSelection(Arrays.asList(
+                        "third", "unknown", "first", "third", "../unsafe")));
+        assertEquals(
+                Arrays.asList("first", "third"),
+                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
+
+        provider().saveSelection(Collections.<String>emptyList());
+        assertEquals(0L, Files.size(privateConfiguration));
+    }
+
+    @Test
+    void saveRejectsUnavailableSharedAndPreservesPrivateSelection() throws Exception {
+        write(privateConfiguration, "existing");
+
+        assertThrows(
+                ConfiguredStartSiteProvider.SharedConfigurationUnavailableException.class,
+                () -> provider().saveSelection(Collections.singletonList("replacement")));
+        assertEquals(
+                Collections.singletonList("existing"),
+                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void unreadableSharedWithMissingPrivatePlansRootWithoutCreatingASelection()
+            throws Exception {
+        ConfiguredStartSiteProvider.ConfigurationFileReader reader = file -> {
+            if (file.equals(privateConfiguration)) {
+                return Optional.empty();
+            }
+            throw new IOException("deliberate unreadable Shared file");
+        };
+
+        StartSitePlan plan = provider(reader).planStartSites();
+
+        assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
+        assertFalse(Files.exists(privateConfiguration));
+    }
+
+    @Test
+    void unreadableExistingPrivatePlansNothingInsteadOfFallingBackOrOpeningRoot()
+            throws Exception {
+        ConfiguredStartSiteProvider.ConfigurationFileReader reader = file -> {
+            if (file.equals(privateConfiguration)) {
+                throw new IOException("deliberate unreadable Private file");
+            }
+            return Optional.of(Collections.singletonList("first"));
+        };
+
+        StartSitePlan plan = provider(reader).planStartSites();
+
+        assertEquals(StartSitePlan.Kind.NONE, plan.getKind());
+        assertTrue(plan.getDiagnostic().contains("could not be read"));
+    }
+
+    @Test
+    void privateCreationFailurePlansRootAndDoesNotClaimInitialization() throws Exception {
+        createApplications("first");
+        write(sharedConfiguration, "first");
+        Path blockedParent = temporaryDirectory.resolve("blocked");
+        Files.write(blockedParent, new byte[] {1});
+        ConfiguredStartSiteProvider blocked = new ConfiguredStartSiteProvider(
+                webRoot,
+                sharedConfiguration,
+                blockedParent.resolve("Config/start-sites.txt"),
+                file -> file.equals(sharedConfiguration)
+                        ? Optional.of(Collections.singletonList("first"))
+                        : Optional.<List<String>>empty());
+
+        StartSitePlan plan = blocked.planStartSites();
+
+        assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
+        assertTrue(plan.getDiagnostic().contains("could not be initialized"));
+        assertFalse(Files.exists(blockedParent.resolve("Config/start-sites.txt")));
+    }
+
+    @Test
+    void concurrentlyAppearingPrivateSelectionIsNeverOverwrittenByInitialization()
+            throws Exception {
+        createApplications("first", "second");
+        write(sharedConfiguration, "first", "second");
+        AtomicInteger privateReads = new AtomicInteger();
+        ConfiguredStartSiteProvider.ConfigurationFileReader reader = file -> {
+            if (file.equals(privateConfiguration)) {
+                if (privateReads.getAndIncrement() == 0) {
+                    write(privateConfiguration, "second");
+                    return Optional.empty();
+                }
+                return Optional.of(Files.readAllLines(file, StandardCharsets.UTF_8));
+            }
+            return Optional.of(Files.readAllLines(file, StandardCharsets.UTF_8));
+        };
+
+        StartSitePlan plan = provider(reader).planStartSites();
+
+        assertEquals(StartSitePlan.Kind.APPLICATIONS, plan.getKind());
+        assertEquals(Collections.singletonList("second"), plan.getSites());
+        assertEquals(
+                Collections.singletonList("second"),
+                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
+    }
+
     private ConfiguredStartSiteProvider provider() {
         return new ConfiguredStartSiteProvider(
                 webRoot,

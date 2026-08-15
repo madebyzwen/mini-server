@@ -64,6 +64,7 @@ final class JsonPersistenceStore extends PersistenceStore {
         requireTarget(target);
         requireSection(section);
 
+        migratePrivateDataIfRequired(target);
         JsonObject root = readRoot(target);
         if (!root.has(section)) {
             throw new SectionNotFoundException();
@@ -73,6 +74,7 @@ final class JsonPersistenceStore extends PersistenceStore {
 
     JsonObject readAll(ResolvedPersistenceTarget target) throws PersistenceException {
         requireTarget(target);
+        migratePrivateDataIfRequired(target);
         return readRoot(target);
     }
 
@@ -149,6 +151,7 @@ final class JsonPersistenceStore extends PersistenceStore {
         };
         try (FileChannel lockChannel = FileChannel.open(lockFile, lockOptions);
              FileLock ignored = acquireLock(lockChannel)) {
+            migratePrivateDataWhileLocked(target, dataDirectory);
             JsonObject root = readRoot(target);
             boolean shouldWrite = modification.apply(root);
             if (shouldWrite) {
@@ -212,13 +215,13 @@ final class JsonPersistenceStore extends PersistenceStore {
 
     private static void preparePrivateDataDirectory(Path dataDirectory)
             throws IOException, PersistenceException {
-        Path siteDirectory = dataDirectory.getParent();
-        Path privateDataRoot = siteDirectory == null ? null : siteDirectory.getParent();
+        Path siteDirectory = dataDirectory;
+        Path privateDataRoot = siteDirectory.getParent();
         if (privateDataRoot == null) {
             throw writeFailure(null);
         }
 
-        Files.createDirectories(privateDataRoot);
+        createDirectoriesWithoutFollowingLinks(privateDataRoot);
         if (!Files.isDirectory(privateDataRoot, LinkOption.NOFOLLOW_LINKS)
                 || Files.isSymbolicLink(privateDataRoot)) {
             throw writeFailure(null);
@@ -229,7 +232,162 @@ final class JsonPersistenceStore extends PersistenceStore {
                 || Files.isSymbolicLink(siteDirectory)) {
             throw writeFailure(null);
         }
-        createSingleDirectoryIfMissing(dataDirectory);
+    }
+
+    private static void createDirectoriesWithoutFollowingLinks(Path directory)
+            throws IOException, PersistenceException {
+        if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
+                    || Files.isSymbolicLink(directory)) {
+                throw writeFailure(null);
+            }
+            return;
+        }
+        Path parent = directory.getParent();
+        if (parent == null) {
+            throw writeFailure(null);
+        }
+        createDirectoriesWithoutFollowingLinks(parent);
+        try {
+            Files.createDirectory(directory);
+        } catch (FileAlreadyExistsException exception) {
+            // A concurrent writer may have created this directory.
+        }
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(directory)) {
+            throw writeFailure(null);
+        }
+    }
+
+    private void migratePrivateDataIfRequired(ResolvedPersistenceTarget target)
+            throws PersistenceException {
+        if (target.getScope() != PersistenceScope.PRIVATE
+                || target.getLegacyDataFile() == null
+                || Files.exists(target.getDataFile(), LinkOption.NOFOLLOW_LINKS)
+                || !Files.exists(target.getLegacyDataFile(), LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+
+        Path dataDirectory = prepareDataDirectory(target);
+        Path lockFile = lockFileFor(target);
+        if (Files.isSymbolicLink(lockFile)) {
+            throw readFailure(null);
+        }
+        try (FileChannel lockChannel = FileChannel.open(
+                lockFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE);
+             FileLock ignored = acquireLock(lockChannel)) {
+            migratePrivateDataWhileLocked(target, dataDirectory);
+        } catch (PersistenceException exception) {
+            throw exception;
+        } catch (IOException | SecurityException exception) {
+            throw readFailure(exception);
+        }
+    }
+
+    private static void migratePrivateDataWhileLocked(
+            ResolvedPersistenceTarget target,
+            Path dataDirectory) throws IOException, PersistenceException {
+        if (target.getScope() != PersistenceScope.PRIVATE
+                || target.getLegacyDataFile() == null
+                || Files.exists(target.getDataFile(), LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+
+        Path legacyDataFile = target.getLegacyDataFile();
+        if (!Files.exists(legacyDataFile, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        validateLegacyDataPath(legacyDataFile);
+
+        Path temporaryFile = null;
+        boolean established = false;
+        try {
+            temporaryFile = Files.createTempFile(
+                    dataDirectory,
+                    target.getDataFile().getFileName().toString() + "-migration-",
+                    ".tmp");
+            Files.copy(
+                    legacyDataFile,
+                    temporaryFile,
+                    StandardCopyOption.REPLACE_EXISTING);
+            Files.move(
+                    temporaryFile,
+                    target.getDataFile(),
+                    StandardCopyOption.ATOMIC_MOVE);
+            established = true;
+        } finally {
+            if (!established && temporaryFile != null) {
+                try {
+                    Files.deleteIfExists(temporaryFile);
+                } catch (IOException | SecurityException ignored) {
+                    // Preserve the migration failure and the legacy source.
+                }
+            }
+        }
+
+        if (established) {
+            removeLegacyDataAfterMigration(legacyDataFile);
+        }
+    }
+
+    private static void validateLegacyDataPath(Path legacyDataFile)
+            throws IOException, PersistenceException {
+        Path legacyDataDirectory = legacyDataFile.getParent();
+        Path legacySiteDirectory = legacyDataDirectory == null
+                ? null
+                : legacyDataDirectory.getParent();
+        Path legacyRoot = legacySiteDirectory == null ? null : legacySiteDirectory.getParent();
+        if (legacyDataDirectory == null || legacySiteDirectory == null || legacyRoot == null) {
+            throw readFailure(null);
+        }
+        requireRealDirectory(legacyRoot);
+        requireRealDirectory(legacySiteDirectory);
+        requireRealDirectory(legacyDataDirectory);
+        BasicFileAttributes attributes = Files.readAttributes(
+                legacyDataFile,
+                BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isRegularFile() || attributes.isSymbolicLink()) {
+            throw readFailure(null);
+        }
+    }
+
+    private static void requireRealDirectory(Path directory)
+            throws IOException, PersistenceException {
+        BasicFileAttributes attributes = Files.readAttributes(
+                directory,
+                BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isDirectory() || attributes.isSymbolicLink()) {
+            throw readFailure(null);
+        }
+    }
+
+    private static void removeLegacyDataAfterMigration(Path legacyDataFile) {
+        try {
+            Files.delete(legacyDataFile);
+        } catch (IOException | SecurityException exception) {
+            return;
+        }
+        deleteIfEmpty(legacyDataFile.getParent());
+        Path legacySite = legacyDataFile.getParent() == null
+                ? null
+                : legacyDataFile.getParent().getParent();
+        deleteIfEmpty(legacySite);
+        deleteIfEmpty(legacySite == null ? null : legacySite.getParent());
+    }
+
+    private static void deleteIfEmpty(Path directory) {
+        if (directory == null) {
+            return;
+        }
+        try {
+            Files.delete(directory);
+        } catch (IOException | SecurityException ignored) {
+            // Cleanup is best effort and never recursive.
+        }
     }
 
     private FileLock acquireLock(FileChannel channel) throws PersistenceException {
@@ -304,19 +462,28 @@ final class JsonPersistenceStore extends PersistenceStore {
     private static void validateReadablePath(ResolvedPersistenceTarget target)
             throws PersistenceException {
         Path dataDirectory = target.getDataFile().getParent();
-        Path siteDirectory = dataDirectory == null ? null : dataDirectory.getParent();
+        Path siteDirectory = target.getScope() == PersistenceScope.PRIVATE
+                ? dataDirectory
+                : dataDirectory == null ? null : dataDirectory.getParent();
         if (dataDirectory == null || siteDirectory == null) {
             throw readFailure(null);
         }
 
         rejectExistingLinkOrNonDirectory(siteDirectory);
-        rejectExistingLinkOrNonDirectory(dataDirectory);
+        if (target.getScope() == PersistenceScope.SHARED) {
+            rejectExistingLinkOrNonDirectory(dataDirectory);
+        }
         if (target.getScope() == PersistenceScope.PRIVATE) {
-            Path privateDataRoot = siteDirectory.getParent();
+            Path privateDataRoot = siteDirectory == null ? null : siteDirectory.getParent();
             if (privateDataRoot == null) {
                 throw readFailure(null);
             }
             rejectExistingLinkOrNonDirectory(privateDataRoot);
+            Path miniServerRoot = privateDataRoot.getParent();
+            if (miniServerRoot == null) {
+                throw readFailure(null);
+            }
+            rejectExistingLinkOrNonDirectory(miniServerRoot);
         }
     }
 

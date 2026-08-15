@@ -24,7 +24,7 @@ class PrivateDataRootResolverTest {
 
         Path privateRoot = PrivateDataRootResolver.resolve(environment);
 
-        assertEquals(temporaryDirectory.resolve("MiniServerData"), privateRoot);
+        assertEquals(temporaryDirectory.resolve("MiniServer/Data"), privateRoot);
     }
 
     @Test

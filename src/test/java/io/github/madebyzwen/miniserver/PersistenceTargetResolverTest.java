@@ -30,7 +30,7 @@ class PersistenceTargetResolverTest {
     @BeforeEach
     void createRoots() throws IOException {
         webRoot = temporaryDirectory.resolve("www");
-        privateDataRoot = temporaryDirectory.resolve("profile/MiniServerData");
+        privateDataRoot = temporaryDirectory.resolve("profile/MiniServer/Data");
         Files.createDirectories(webRoot);
     }
 
@@ -59,7 +59,7 @@ class PersistenceTargetResolverTest {
         assertEquals(PersistenceScope.PRIVATE, target.getScope());
         assertEquals("read", target.getOperation());
         assertEquals(
-                privateDataRoot.toAbsolutePath().resolve("example/data/data.json"),
+                privateDataRoot.toAbsolutePath().resolve("example/data.json"),
                 target.getDataFile());
         assertFalse(Files.exists(site.resolve("data")));
         assertFalse(Files.exists(privateDataRoot));
@@ -83,10 +83,10 @@ class PersistenceTargetResolverTest {
         assertEquals(example.resolve("data/data.json"), exampleSharedTarget.getDataFile());
         assertEquals(dashboard.resolve("data/data.json"), dashboardSharedTarget.getDataFile());
         assertEquals(
-                privateDataRoot.resolve("example/data/data.json").toAbsolutePath(),
+                privateDataRoot.resolve("example/data.json").toAbsolutePath(),
                 examplePrivateTarget.getDataFile());
         assertEquals(
-                privateDataRoot.resolve("dashboard/data/data.json").toAbsolutePath(),
+                privateDataRoot.resolve("dashboard/data.json").toAbsolutePath(),
                 dashboardPrivateTarget.getDataFile());
     }
 

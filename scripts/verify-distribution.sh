@@ -129,7 +129,7 @@ for entry in "${entries[@]}"; do
     relative=${entry#"$distribution_root"/}
 
     case "$relative" in
-        startup.lock|*/startup.lock|instance.lock|*/instance.lock|instance.json|*/instance.json|MiniServerData|MiniServerData/*|*/MiniServerData|*/MiniServerData/*|target|target/*|src|src/*|template|template/*)
+        startup.lock|*/startup.lock|instance.lock|*/instance.lock|instance.json|*/instance.json|MiniServerData|MiniServerData/*|*/MiniServerData|*/MiniServerData/*|MiniServer/Config|MiniServer/Config/*|MiniServer/Data|MiniServer/Data/*|target|target/*|src|src/*|template|template/*)
             echo "Distribution ZIP contains forbidden content: $entry" >&2
             exit 1
             ;;

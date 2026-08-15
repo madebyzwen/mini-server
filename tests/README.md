@@ -80,6 +80,11 @@ Priority areas include:
 - First-start and repeated-start configuration rereading with active-port reuse
 - Shared removal, re-addition, and current-user selection behavior
 - Safe start-site URL path-segment encoding
+- Canonical `%APPDATA%\MiniServer\Config` and `Data\<site>\data.json` resolution
+- Byte-preserving v1.0 Private-data migration, canonical precedence, locking, and cleanup
+- Missing-Private initialization and explicit root/application/none startup plans
+- Built-in root welcome page, HTML escaping, Shared-only choices, and empty/unavailable states
+- Strict replacement-selection JSON endpoint and save-time Shared revalidation
 
 ## Test Independence
 
@@ -152,6 +157,10 @@ Tests should confirm that:
 - Write-lock timeout returns `Write failed`
 - Atomic writes prevent readers from observing partial JSON
 - Reads do not acquire a separate read lock
+- Private persistence uses `Data\<site>\data.json` without a redundant `data` directory
+- Released v1.0 Private data migrates byte-for-byte only when canonical data is absent
+- Canonical data wins concurrent/legacy precedence and no permanent dual write occurs
+- Migration failures preserve legacy data and successful cleanup is nonrecursive and best effort
 
 ## API Tests
 
@@ -241,6 +250,14 @@ configuration failures, and rereading on repeated starts. Injectable file
 reading is used for deterministic unreadable-file tests rather than relying on
 operating-system permission changes.
 
+The suite also verifies normalized missing-Private initialization, explicit
+root/application/none browser-opening plans, current Shared revalidation, and
+atomic complete replacement of the canonical Private selection. Loopback HTTP
+tests cover the internal English `GET /` page, Shared-only all-checked choices,
+HTML escaping, empty and unavailable states, strict JSON payload validation,
+filtering/deduplication/Shared order, empty replacement, rejected-save
+preservation, and separation from stop, persistence API, and static routes.
+
 ## Java Compatibility
 
 Tests for the initial release must remain compatible with the project's Java 8 target.
@@ -258,6 +275,9 @@ Examples include:
 - Windows default-browser launch through the configured HTTP URL handler
 - Respecting a changed Windows default browser on a later start action
 - Desktop shortcut or launcher behavior
+- First-run Windows-default-browser opening of the welcome page with its actual dynamic port
+- Responsive welcome-page presentation and visible save success/error feedback on Windows
+- Packaged Windows initialization, later reselection, and migrated Private-data behavior
 - Interaction with existing default-browser instances
 - Browser-opening failure remaining nonfatal while exposing the active URL where practical
 - Closing the selected browser without stopping Mini Server

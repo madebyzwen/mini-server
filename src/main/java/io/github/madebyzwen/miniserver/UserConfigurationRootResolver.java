@@ -13,7 +13,7 @@ final class UserConfigurationRootResolver {
 
     private static final String APP_DATA = "APPDATA";
     private static final String MINI_SERVER_DIRECTORY = "MiniServer";
-    private static final String CONFIG_DIRECTORY = "config";
+    private static final String CONFIG_DIRECTORY = "Config";
 
     private UserConfigurationRootResolver() {
     }

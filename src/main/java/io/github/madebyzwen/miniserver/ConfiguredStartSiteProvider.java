@@ -1,12 +1,18 @@
 package io.github.madebyzwen.miniserver;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,15 +21,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
-/**
- * Applies Shared approval and optional Private filtering to current applications.
- */
+/** Owns Shared approval, current-user selection, and safe selection updates. */
 final class ConfiguredStartSiteProvider implements StartSiteProvider {
 
     static final String START_SITES_FILE = "start-sites.txt";
 
     private static final String CONFIG_DIRECTORY = "config";
+    private static final String LOCK_SUFFIX = ".lock";
+    private static final long LOCK_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(1L);
+    private static final long LOCK_RETRY_NANOS = TimeUnit.MILLISECONDS.toNanos(10L);
     private static final ConfigurationFileReader DEFAULT_FILE_READER =
             new ConfigurationFileReader() {
                 @Override
@@ -45,10 +54,7 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
         this(null, null, null, DEFAULT_FILE_READER);
     }
 
-    ConfiguredStartSiteProvider(
-            Path webRoot,
-            Path sharedConfiguration,
-            Path privateConfiguration) {
+    ConfiguredStartSiteProvider(Path webRoot, Path sharedConfiguration, Path privateConfiguration) {
         this(webRoot, sharedConfiguration, privateConfiguration, DEFAULT_FILE_READER);
     }
 
@@ -77,30 +83,259 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
     }
 
     @Override
-    public List<String> loadStartSites() throws IOException {
-        Path webRoot = resolveWebRoot();
-        Path sharedConfiguration = resolveSharedConfiguration(webRoot);
-        Optional<List<String>> sharedLines = fileReader.read(sharedConfiguration);
-        if (!sharedLines.isPresent()) {
+    public StartSitePlan planStartSites() throws IOException {
+        final Path privateConfiguration;
+        try {
+            privateConfiguration = resolvePrivateConfiguration();
+        } catch (IOException | RuntimeException exception) {
+            return StartSitePlan.root(
+                    "The current-user start-site selection location is unavailable.");
+        }
+        final Optional<List<String>> privateLines;
+        try {
+            privateLines = fileReader.read(privateConfiguration);
+        } catch (IOException exception) {
+            return StartSitePlan.none("The current-user start-site selection could not be read.");
+        }
+
+        final SharedStartSites shared;
+        try {
+            shared = loadSharedStartSites();
+        } catch (IOException exception) {
+            return privateLines.isPresent()
+                    ? StartSitePlan.none("Shared start-site approval is unavailable.")
+                    : StartSitePlan.root("Shared start-site approval is unavailable.");
+        }
+        if (!shared.isAvailable()) {
+            return privateLines.isPresent()
+                    ? StartSitePlan.none("Shared start-site approval is unavailable.")
+                    : StartSitePlan.root("Shared start-site approval is unavailable.");
+        }
+
+        if (!privateLines.isPresent()) {
+            try {
+                if (initializePrivateSelection(privateConfiguration, shared.getSites())) {
+                    return StartSitePlan.root(null);
+                }
+                Optional<List<String>> concurrentSelection = fileReader.read(privateConfiguration);
+                if (!concurrentSelection.isPresent()) {
+                    return StartSitePlan.root(
+                            "The current-user start-site selection could not be initialized.");
+                }
+                return planApplications(shared.getSites(), concurrentSelection.get());
+            } catch (IOException exception) {
+                return StartSitePlan.root(
+                        "The current-user start-site selection could not be initialized.");
+            }
+        }
+        return planApplications(shared.getSites(), privateLines.get());
+    }
+
+    /** Compatibility view retained for focused parser and filtering tests. */
+    List<String> loadStartSites() throws IOException {
+        SharedStartSites shared = loadSharedStartSites();
+        if (!shared.isAvailable()) {
             return Collections.emptyList();
         }
-
-        List<String> sharedSites = validateSharedSites(
-                webRoot,
-                parse(sharedLines.get()));
         Optional<List<String>> privateLines = fileReader.read(resolvePrivateConfiguration());
         if (!privateLines.isPresent()) {
-            return sharedSites;
+            return shared.getSites();
         }
+        StartSitePlan plan = planApplications(shared.getSites(), privateLines.get());
+        return plan.getSites();
+    }
 
-        Set<String> privateSelection = new HashSet<String>(parse(privateLines.get()));
+    SharedStartSites loadSharedStartSites() throws IOException {
+        Path webRoot = resolveWebRoot();
+        Optional<List<String>> sharedLines = fileReader.read(resolveSharedConfiguration(webRoot));
+        if (!sharedLines.isPresent()) {
+            return SharedStartSites.unavailable();
+        }
+        return SharedStartSites.available(validateSharedSites(webRoot, parse(sharedLines.get())));
+    }
+
+    List<String> saveSelection(List<String> requestedSites) throws IOException {
+        if (requestedSites == null) {
+            throw new NullPointerException("The requested sites must not be null.");
+        }
+        final SharedStartSites shared;
+        try {
+            shared = loadSharedStartSites();
+        } catch (IOException exception) {
+            throw new SharedConfigurationUnavailableException(exception);
+        }
+        if (!shared.isAvailable()) {
+            throw new SharedConfigurationUnavailableException();
+        }
+        Set<String> requested = new HashSet<String>();
+        for (String site : requestedSites) {
+            if (isSafeApplicationName(site)) {
+                requested.add(site);
+            }
+        }
+        List<String> normalized = new ArrayList<String>();
+        for (String approved : shared.getSites()) {
+            if (requested.contains(approved)) {
+                normalized.add(approved);
+            }
+        }
+        replacePrivateSelection(resolvePrivateConfiguration(), normalized);
+        return Collections.unmodifiableList(normalized);
+    }
+
+    private static StartSitePlan planApplications(List<String> sharedSites, List<String> privateLines) {
+        Set<String> privateSelection = new HashSet<String>(parse(privateLines));
         List<String> effectiveSites = new ArrayList<String>();
         for (String sharedSite : sharedSites) {
             if (privateSelection.contains(sharedSite)) {
                 effectiveSites.add(sharedSite);
             }
         }
-        return Collections.unmodifiableList(effectiveSites);
+        return effectiveSites.isEmpty()
+                ? StartSitePlan.none(null)
+                : StartSitePlan.applications(effectiveSites);
+    }
+
+    private boolean initializePrivateSelection(final Path file, final List<String> sites)
+            throws IOException {
+        return withPrivateConfigurationLock(file, new LockedConfigurationOperation<Boolean>() {
+            @Override
+            public Boolean run() throws IOException {
+                if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+                    return Boolean.FALSE;
+                }
+                writeConfigurationAtomically(file, sites, false);
+                return Boolean.TRUE;
+            }
+        });
+    }
+
+    private void replacePrivateSelection(final Path file, final List<String> sites)
+            throws IOException {
+        withPrivateConfigurationLock(file, new LockedConfigurationOperation<Void>() {
+            @Override
+            public Void run() throws IOException {
+                writeConfigurationAtomically(file, sites, true);
+                return null;
+            }
+        });
+    }
+
+    private <T> T withPrivateConfigurationLock(
+            Path file,
+            LockedConfigurationOperation<T> operation) throws IOException {
+        preparePrivateConfigurationDirectory(file);
+        Path lockFile = file.resolveSibling(file.getFileName().toString() + LOCK_SUFFIX);
+        rejectLink(lockFile);
+        try (FileChannel channel = FileChannel.open(
+                lockFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE);
+             FileLock ignored = acquireLock(channel)) {
+            rejectLink(file);
+            return operation.run();
+        }
+    }
+
+    private static void preparePrivateConfigurationDirectory(Path file) throws IOException {
+        Path directory = file.getParent();
+        Path miniServerDirectory = directory == null ? null : directory.getParent();
+        if (directory == null || miniServerDirectory == null) {
+            throw new IOException("The current-user configuration path is invalid.");
+        }
+        createDirectoriesWithoutFollowingLinks(directory);
+        requireDirectory(miniServerDirectory);
+    }
+
+    private static void writeConfigurationAtomically(
+            Path file,
+            List<String> sites,
+            boolean replace) throws IOException {
+        Path temporary = null;
+        boolean moved = false;
+        try {
+            temporary = Files.createTempFile(file.getParent(), "start-sites-", ".tmp");
+            try (BufferedWriter writer = Files.newBufferedWriter(
+                    temporary,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.TRUNCATE_EXISTING)) {
+                for (String site : sites) {
+                    writer.write(site);
+                    writer.newLine();
+                }
+            }
+            if (replace) {
+                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
+            }
+            moved = true;
+        } finally {
+            if (!moved && temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException | SecurityException ignored) {
+                    // Preserve the original configuration write failure.
+                }
+            }
+        }
+    }
+
+    private static FileLock acquireLock(FileChannel channel) throws IOException {
+        long started = System.nanoTime();
+        while (true) {
+            try {
+                FileLock lock = channel.tryLock();
+                if (lock != null) {
+                    return lock;
+                }
+            } catch (OverlappingFileLockException exception) {
+                // Another thread in this JVM owns this configuration lock.
+            }
+            long elapsed = System.nanoTime() - started;
+            if (elapsed >= LOCK_TIMEOUT_NANOS) {
+                throw new IOException("Timed out waiting for the start-site configuration lock.");
+            }
+            LockSupport.parkNanos(Math.min(LOCK_RETRY_NANOS, LOCK_TIMEOUT_NANOS - elapsed));
+            if (Thread.currentThread().isInterrupted()) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Start-site configuration locking was interrupted.");
+            }
+        }
+    }
+
+    private static void requireDirectory(Path directory) throws IOException {
+        BasicFileAttributes attributes = Files.readAttributes(
+                directory, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isDirectory() || attributes.isSymbolicLink()) {
+            throw new IOException("The current-user configuration path is unsafe.");
+        }
+    }
+
+    private static void createDirectoriesWithoutFollowingLinks(Path directory)
+            throws IOException {
+        if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+            requireDirectory(directory);
+            return;
+        }
+        Path parent = directory.getParent();
+        if (parent == null) {
+            throw new IOException("The current-user configuration path is invalid.");
+        }
+        createDirectoriesWithoutFollowingLinks(parent);
+        try {
+            Files.createDirectory(directory);
+        } catch (java.nio.file.FileAlreadyExistsException exception) {
+            // A concurrent initializer may have created this directory.
+        }
+        requireDirectory(directory);
+    }
+
+    private static void rejectLink(Path path) throws IOException {
+        if (Files.isSymbolicLink(path)) {
+            throw new IOException("The current-user configuration path is unsafe.");
+        }
     }
 
     private Path resolveWebRoot() throws IOException {
@@ -126,20 +361,16 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
     }
 
     private Path resolvePrivateConfiguration() throws IOException {
-        if (injectedPrivateConfiguration != null) {
-            return injectedPrivateConfiguration;
-        }
-        return UserConfigurationRootResolver.resolve().resolve(START_SITES_FILE);
+        return injectedPrivateConfiguration != null
+                ? injectedPrivateConfiguration
+                : UserConfigurationRootResolver.resolve().resolve(START_SITES_FILE);
     }
 
     private static List<String> parse(List<String> lines) {
         Set<String> entries = new LinkedHashSet<String>();
         for (String line : lines) {
             String entry = line.trim();
-            if (entry.isEmpty() || entry.startsWith("#")) {
-                continue;
-            }
-            if (isSafeApplicationName(entry)) {
+            if (!entry.isEmpty() && !entry.startsWith("#") && isSafeApplicationName(entry)) {
                 entries.add(entry);
             }
         }
@@ -147,16 +378,10 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
     }
 
     static boolean isSafeApplicationName(String entry) {
-        if (entry == null
-                || entry.isEmpty()
-                || ".".equals(entry)
-                || "..".equals(entry)
-                || "_shared".equalsIgnoreCase(entry)
-                || entry.indexOf('/') >= 0
-                || entry.indexOf('\\') >= 0
-                || entry.indexOf(':') >= 0
-                || entry.indexOf('?') >= 0
-                || entry.indexOf('#') >= 0) {
+        if (entry == null || entry.isEmpty() || ".".equals(entry) || "..".equals(entry)
+                || "_shared".equalsIgnoreCase(entry) || entry.indexOf('/') >= 0
+                || entry.indexOf('\\') >= 0 || entry.indexOf(':') >= 0
+                || entry.indexOf('?') >= 0 || entry.indexOf('#') >= 0) {
             return false;
         }
         for (int index = 0; index < entry.length(); index++) {
@@ -167,16 +392,14 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
         return true;
     }
 
-    private static List<String> validateSharedSites(
-            Path configuredWebRoot,
-            List<String> parsedSites) throws IOException {
+    private static List<String> validateSharedSites(Path configuredWebRoot, List<String> parsedSites)
+            throws IOException {
         final Path webRoot;
         try {
             webRoot = configuredWebRoot.toRealPath();
         } catch (InvalidPathException | SecurityException exception) {
             throw new IOException("The Mini Server web root cannot be accessed.", exception);
         }
-
         List<String> validSites = new ArrayList<String>();
         for (String site : parsedSites) {
             if (isExistingDirectApplication(webRoot, site)) {
@@ -188,22 +411,18 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
 
     private static boolean isExistingDirectApplication(Path webRoot, String site)
             throws IOException {
-        final Path candidate;
         try {
-            candidate = webRoot.resolve(site).normalize();
+            Path candidate = webRoot.resolve(site).normalize();
             if (!webRoot.equals(candidate.getParent())) {
                 return false;
             }
             BasicFileAttributes attributes = Files.readAttributes(
-                    candidate,
-                    BasicFileAttributes.class,
-                    LinkOption.NOFOLLOW_LINKS);
+                    candidate, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
             if (!attributes.isDirectory() || attributes.isSymbolicLink()) {
                 return false;
             }
             Path realApplication = candidate.toRealPath();
-            return candidate.equals(realApplication)
-                    && webRoot.equals(realApplication.getParent());
+            return candidate.equals(realApplication) && webRoot.equals(realApplication.getParent());
         } catch (NoSuchFileException | InvalidPathException exception) {
             return false;
         } catch (SecurityException exception) {
@@ -211,8 +430,42 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
         }
     }
 
-    interface ConfigurationFileReader {
+    static final class SharedStartSites {
+        private final boolean available;
+        private final List<String> sites;
 
+        private SharedStartSites(boolean available, List<String> sites) {
+            this.available = available;
+            this.sites = Collections.unmodifiableList(new ArrayList<String>(sites));
+        }
+
+        static SharedStartSites available(List<String> sites) {
+            return new SharedStartSites(true, sites);
+        }
+
+        static SharedStartSites unavailable() {
+            return new SharedStartSites(false, Collections.<String>emptyList());
+        }
+
+        boolean isAvailable() { return available; }
+        List<String> getSites() { return sites; }
+    }
+
+    static final class SharedConfigurationUnavailableException extends IOException {
+        SharedConfigurationUnavailableException() {
+            super("Shared start-site approval is unavailable.");
+        }
+
+        SharedConfigurationUnavailableException(Throwable cause) {
+            super("Shared start-site approval is unavailable.", cause);
+        }
+    }
+
+    interface ConfigurationFileReader {
         Optional<List<String>> read(Path file) throws IOException;
+    }
+
+    private interface LockedConfigurationOperation<T> {
+        T run() throws IOException;
     }
 }

@@ -6,13 +6,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 
-final class PrivateDataRootResolver {
+final class LegacyPrivateDataRootResolver {
 
     private static final String APP_DATA = "APPDATA";
-    private static final String MINI_SERVER_DIRECTORY = "MiniServer";
-    private static final String PRIVATE_DATA_DIRECTORY = "Data";
+    private static final String LEGACY_PRIVATE_DATA_DIRECTORY = "MiniServerData";
 
-    private PrivateDataRootResolver() {
+    private LegacyPrivateDataRootResolver() {
     }
 
     static Path resolve() throws IOException {
@@ -23,7 +22,7 @@ final class PrivateDataRootResolver {
         String appData = environment.get(APP_DATA);
         if (appData == null || appData.trim().isEmpty()) {
             throw new IOException(
-                    "Cannot determine the private data root because APPDATA is unavailable.");
+                    "Cannot determine the legacy private data root because APPDATA is unavailable.");
         }
 
         try {
@@ -31,14 +30,11 @@ final class PrivateDataRootResolver {
             if (!appDataDirectory.isAbsolute()) {
                 throw new IOException("APPDATA must identify an absolute path.");
             }
-            return appDataDirectory
-                    .resolve(MINI_SERVER_DIRECTORY)
-                    .resolve(PRIVATE_DATA_DIRECTORY)
-                    .normalize();
+            return appDataDirectory.resolve(LEGACY_PRIVATE_DATA_DIRECTORY).normalize();
         } catch (InvalidPathException exception) {
             throw new IOException("APPDATA does not contain a valid filesystem path.", exception);
         } catch (SecurityException exception) {
-            throw new IOException("The private data root cannot be accessed.", exception);
+            throw new IOException("The legacy private data root cannot be accessed.", exception);
         }
     }
 }

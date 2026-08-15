@@ -9,10 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Shared installation start-site approval with optional current-user Private filtering, preserving Shared ordering and applying changes on each start action.
+- An English, self-contained `Welcome to Mini Server` page for first-run selection and later complete replacement of the personal start-site selection.
+- Safe byte-preserving migration of released v1.0 Private persistence when the v1.1 canonical file is absent.
 
 ### Changed
 
 - Automatic browser opening now delegates local Mini Server URLs to the Windows configured default HTTP handler instead of directly selecting Microsoft Edge.
+- Current-user Mini Server storage now uses `%APPDATA%\MiniServer\Config` for configuration and `%APPDATA%\MiniServer\Data\<site>\data.json` for Private application persistence.
+- A missing personal start-site file is initialized from current valid Shared entries after server readiness and opens only the built-in welcome page on that start action.
 
 ## [1.0.0] - 2026-08-15
 

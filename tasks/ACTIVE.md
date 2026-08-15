@@ -6,7 +6,10 @@ This document records the current approved implementation work for Mini Server.
 
 Mini Server v1.0.0 has been released. The approved v1.1 scope is defined by REQ-009, revised REQ-010, and REQ-011.
 
-T-015 and T-016 have been completed. The newly approved refinements require T-018 before T-017. T-018 remains Planned, and T-017 remains Planned as the final v1.1 verification task after T-018.
+T-015 and T-016 have been completed. T-018 implementation and local automated
+verification are present, but its required packaged Windows UX/default-browser
+manual verification has not yet been performed, so T-018 remains Planned.
+T-017 remains Planned as the final v1.1 verification task after T-018.
 
 ## T-015 — Implement Default Browser Launch
 
@@ -141,6 +144,12 @@ Acceptance:
 ## T-018 — Implement Unified User Storage and Start-Site Selection UX
 
 Status: Planned
+
+Implementation note: source, automated tests, distribution-compatible code,
+and current documentation implement this task. Status remains Planned because
+the required manual welcome-page, Windows-default-browser, feedback, and
+packaged Windows verification has not been performed in the Linux development
+environment. This note is not T-017 release-verification evidence.
 
 Related requirements:
 
@@ -380,7 +389,7 @@ The approved v1.1 task order is:
 
 1. T-015 — Done
 2. T-016 — Done
-3. T-018 — Planned
+3. T-018 — Planned; implementation and local automation present, required Windows manual verification pending
 4. T-017 — Planned, final verification after T-018
 
 The completed v1.0 implementation history remains preserved by Git history, the `v1.0.0` tag, `releases/v1.0.md`, and `docs/notes/V1.0-RELEASE-VERIFICATION.md`.

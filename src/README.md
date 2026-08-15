@@ -139,7 +139,7 @@ Shared application persistence remains below the corresponding hosted applicatio
 
 Private persistence is stored below:
 
-    %APPDATA%\MiniServerData\<site>\data\data.json
+    %APPDATA%\MiniServer\Data\<site>\data.json
 
 Every operation explicitly selects one of these scopes.
 
@@ -173,16 +173,23 @@ Shared automatic-opening approval is read from:
 
     <installation-root>\config\start-sites.txt
 
-Optional current-user filtering is read independently from:
+Current-user replacement selection is stored independently at:
 
-    %APPDATA%\MiniServer\config\start-sites.txt
+    %APPDATA%\MiniServer\Config\start-sites.txt
 
-The start-site provider rereads both levels after each successful first or
+The start-site service rereads both levels after each successful first or
 repeated startup. It validates Shared entries against current first-level
-application directories below `www/`, then applies Private entries only as an
-inclusion set while preserving Shared order. Start-site names are encoded as
-single URL path segments before they are sent to the Windows-default browser
-integration.
+application directories below `www/`, then applies an existing Private file
+only as an inclusion set while preserving Shared order. When Private is
+missing, it is safely initialized from normalized Shared and startup opens only
+the built-in root selection page. `GET /` presents an all-checked Shared-only
+replacement workflow, and `POST /__miniserver/start-sites` atomically replaces
+the complete Private selection after current Shared revalidation.
+
+Private persistence migrates byte-for-byte from the released v1.0 location
+`%APPDATA%\MiniServerData\<site>\data\data.json` before normal Private use when
+the canonical file is absent. An existing canonical file wins and later
+operations never dual-write or fall back to legacy data.
 
 This configuration affects automatic browser opening only. It remains separate
 from runtime coordination and shared or private application persistence.
@@ -246,6 +253,7 @@ If implementation work reveals a missing or contradictory requirement, document 
 
 ## Current State
 
-The Maven source tree implements the released v1.0 runtime plus the completed
-v1.1 default-browser and configurable-start-site tasks. Final v1.1 scope
-verification remains planned under T-017.
+The Maven source tree implements the released v1.0 runtime and the v1.1
+default-browser, unified current-user storage, migration, and interactive
+start-site behavior. Required Windows manual verification and final v1.1 scope
+verification remain planned under T-018 and T-017 respectively.

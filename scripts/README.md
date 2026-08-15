@@ -86,7 +86,7 @@ The Mini Server Java implementation remains responsible for:
 - Dynamic port allocation
 - Repeated-start detection
 - Selecting the active server port
-- Microsoft Edge launch behavior defined by the active requirements
+- Windows default-browser launch behavior defined by the active requirements
 
 A launcher script must not implement a separate competing instance-management or port-selection mechanism.
 

@@ -132,6 +132,9 @@ canonical and legacy files in this order:
 Migration uses the established bounded-locking and atomic-replacement
 integrity principles. It preserves the legacy file content, coordinates
 concurrent attempts, and rechecks canonical-file precedence before committing.
+The implementation uses the canonical `data.json.lock`, a byte-copy temporary
+file beside the canonical target, and an atomic non-replacing move; normal JSON
+validation then proceeds against the established canonical bytes.
 The legacy file is removed only after the canonical file is safely established.
 Empty legacy directories may then be removed best-effort; cleanup failure is
 nonfatal after successful migration. A migration failure leaves legacy data
@@ -258,6 +261,11 @@ A later manual visit to `/` intentionally repeats the same Shared-only,
 all-checked replacement workflow. Start-site UI and selection remain browser
 conveniences only; application discovery, static serving, persistence, and
 direct URL access remain independent.
+
+The runtime implements these boundaries with one `ConfiguredStartSiteProvider`
+shared by startup planning, the welcome handler, and the replacement handler.
+`StartSitePlan` explicitly distinguishes opening root, opening application
+URLs, and opening nothing; root is never represented as a synthetic site name.
 
 ## Static File Serving
 

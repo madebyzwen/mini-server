@@ -49,17 +49,25 @@ public final class MiniServerStartup {
     private final Settings settings;
     private final ServerFactory serverFactory;
     private final StartupObserver observer;
+    private final ConfiguredStartSiteProvider startSites;
 
     public MiniServerStartup() {
-        this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
+        this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER,
+                new ConfiguredStartSiteProvider());
+    }
+
+    MiniServerStartup(ConfiguredStartSiteProvider startSites) {
+        this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER, startSites);
     }
 
     MiniServerStartup(Path runtimeDirectory, Settings settings) {
-        this(runtimeDirectory, null, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
+        this(runtimeDirectory, null, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER,
+                new ConfiguredStartSiteProvider());
     }
 
     MiniServerStartup(Path runtimeDirectory, Path webRoot, Settings settings) {
-        this(runtimeDirectory, webRoot, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER);
+        this(runtimeDirectory, webRoot, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER,
+                new ConfiguredStartSiteProvider());
     }
 
     MiniServerStartup(
@@ -68,11 +76,23 @@ public final class MiniServerStartup {
             Settings settings,
             ServerFactory serverFactory,
             StartupObserver observer) {
+        this(runtimeDirectory, webRoot, settings, serverFactory, observer,
+                new ConfiguredStartSiteProvider());
+    }
+
+    MiniServerStartup(
+            Path runtimeDirectory,
+            Path webRoot,
+            Settings settings,
+            ServerFactory serverFactory,
+            StartupObserver observer,
+            ConfiguredStartSiteProvider startSites) {
         this.injectedRuntimeDirectory = runtimeDirectory;
         this.injectedWebRoot = webRoot;
         this.settings = settings;
         this.serverFactory = serverFactory;
         this.observer = observer;
+        this.startSites = startSites;
     }
 
     public StartupResult start() throws StartupException {
@@ -189,7 +209,9 @@ public final class MiniServerStartup {
             return new RootRequestRouter(
                     localStopHandler,
                     apiHandler,
-                    staticFileHandler);
+                    staticFileHandler,
+                    new WelcomePageHandler(startSites),
+                    new StartSiteSelectionHandler(startSites));
         } catch (IOException exception) {
             throw new StartupException("The Mini Server web root cannot be accessed.", exception);
         }
