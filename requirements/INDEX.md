@@ -54,8 +54,11 @@ The following requirements are approved for Mini Server v1.1 implementation:
 - REQ-010 — Configurable Start Sites
   - `active/REQ-010-configurable-start-sites.md`
   - Target release: v1.1
+- REQ-011 — Unified Current-User Storage
+  - `active/REQ-011-unified-current-user-storage.md`
+  - Target release: v1.1
 
-These two active requirements define the complete currently approved v1.1 functional scope. No other v1.1 feature is approved by this index.
+These three active requirements define the complete currently approved v1.1 functional scope. No other v1.1 feature is approved by this index.
 
 ---
 

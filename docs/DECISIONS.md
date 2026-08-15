@@ -486,6 +486,14 @@ Keeping the shared persistence directory below the application directory while e
 
 ## D-016 — Application Separation Is Namespace Isolation, Not Authentication
 
+Status: Refined
+
+Refined by: D-028 — Unified Current-User Mini Server Storage
+
+The namespace and trusted-local-environment conclusions remain current. D-028
+replaces only the Private filesystem location recorded below and adds the v1.1
+migration from that released location.
+
 ### Decision
 
 Mini Server separates application persistence by URL namespace, explicit persistence scope, and controlled filesystem location.
@@ -1343,6 +1351,15 @@ An installation-scoped lock on a shared drive would cause unrelated computers to
 
 ## D-021 — Explicit Shared and Private Persistence Scopes
 
+Status: Refined
+
+Refined by: D-028 — Unified Current-User Mini Server Storage
+
+The mandatory shared/private scopes, API meaning, JSON model, and Shared path
+remain current. D-028 replaces the Private path and the statement that its
+directory shape mirrors Shared, and defines the required migration from the
+released v1.0 location.
+
 ### Decision
 
 Every persistence operation explicitly selects exactly one of two scopes:
@@ -1751,6 +1768,19 @@ A small installation-level list makes automatic opening configurable for local a
 
 ## D-027 — Shared and Private Start-Site Selection
 
+Status: Refined
+
+Refined by:
+
+- D-028 — Unified Current-User Mini Server Storage
+- D-029 — Interactive Start-Site Selection and First-Run Initialization
+
+Shared upper-bound, intersection, ordering, parsing, and serving-independence
+rules remain current. D-028 changes canonical `Config` casing, while D-029
+replaces the missing-Private rule and adds the built-in replacement-selection
+workflow. The historical text below is preserved to show the pre-refinement
+v1.1 design implemented by T-016.
+
 ### Decision
 
 Mini Server uses two start-site configuration levels:
@@ -1817,6 +1847,197 @@ The user-specific file is Mini Server configuration rather than application data
 - The distribution contains the Shared default file but does not package a pre-created Private user file.
 - Applications remain discoverable and serveable independently of start-site approval.
 - Runtime coordination, application persistence, browser-launch failure boundaries, and Java 8 compatibility remain unchanged.
+
+---
+
+## D-028 — Unified Current-User Mini Server Storage
+
+### Decision
+
+Mini Server uses one canonical roaming current-user root with canonical
+directory casing:
+
+```text
+%APPDATA%\MiniServer\
+├── Config\
+│   └── start-sites.txt
+└── Data\
+    └── <site>\
+        └── data.json
+```
+
+`Config` contains current-user Mini Server configuration. `Data` contains
+current-user application persistence. The canonical Private persistence path
+has no redundant `<site>\data\` directory level.
+
+Shared persistence remains:
+
+```text
+<installation-root>\www\<site>\data\data.json
+```
+
+Local runtime coordination remains:
+
+```text
+%LOCALAPPDATA%\MiniServer\runtime\
+```
+
+D-028 refines D-016 and D-021 only where they record the released v1.0 Private
+path and mirrored directory structure. Their URL-derived namespace, explicit
+scope, trusted-local-environment, JSON model, and Shared persistence decisions
+remain current.
+
+### v1.0 Compatibility Transition
+
+The released v1.0 Private file:
+
+```text
+%APPDATA%\MiniServerData\<site>\data\data.json
+```
+
+is a migration source, not an alternative current location. Before normal
+Private persistence use for a valid site:
+
+1. An existing canonical `%APPDATA%\MiniServer\Data\<site>\data.json` is
+   authoritative and is never overwritten or merged with legacy data.
+2. If canonical is absent and legacy exists, Mini Server safely establishes
+   the canonical file from the preserved legacy content before proceeding.
+3. If neither exists, normal Private persistence uses the canonical location.
+
+Migration uses bounded coordination and atomic replacement consistent with
+D-023. A concurrent canonical creation wins. Legacy data is removed only after
+the canonical file is safely established. Empty legacy directories may then be
+removed best-effort, and cleanup failure is nonfatal after successful data
+migration. A migration failure leaves the legacy file intact and fails cleanly
+without silent destruction, truncation, overwrite, or false success.
+
+There is no permanent dual write, merge, compatibility alias, or legacy
+fallback. Once canonical exists, all later Private operations use only it.
+
+### Rationale
+
+One roaming Mini Server root makes current-user files predictable while named
+`Config` and `Data` boundaries keep server preferences separate from
+application data. Removing the redundant Private directory level avoids
+copying a Shared-web-root layout that has no purpose outside `www`.
+
+The legacy path was released in v1.0.0, so changing it without a safe,
+precedence-defined transition would risk silently hiding or losing user data.
+
+### Consequences
+
+- Current-user configuration and application data share a canonical roaming
+  root but remain separate responsibilities.
+- Shared installation data and local transient runtime state do not move.
+- Clients still cannot provide arbitrary persistence paths.
+- Existing persistence API, JSON, locking, atomic-write, and security-boundary
+  semantics remain unchanged.
+- Migration is bounded compatibility behavior, not a general migration
+  framework.
+- Implementation remains Java 8 compatible.
+
+---
+
+## D-029 — Interactive Start-Site Selection and First-Run Initialization
+
+### Decision
+
+D-029 refines D-027's missing-Private behavior. Shared remains the upper bound
+and canonical order; existing Private selections still reduce current valid
+Shared through intersection.
+
+After a normal first or repeated start has a ready server, the actual active
+port, and valid runtime state, a missing canonical Private file triggers
+initialization. Mini Server reads and validates current Shared, creates
+`%APPDATA%\MiniServer\Config\start-sites.txt`, and writes only the current valid
+normalized Shared application names in Shared order. Comments, invalid names,
+duplicates, and missing applications are not copied. A readable Shared file
+with no valid applications may create an empty Private file.
+
+That initialization action opens only:
+
+```text
+http://127.0.0.1:<active-port>/
+```
+
+through D-025. It opens no application URL. When Private already exists, normal
+starts do not initialize or rewrite it, open only the current Shared/Private
+intersection in Shared order, and do not automatically open `/`.
+
+If Private is missing and Shared is unavailable or cannot be resolved, the
+server remains active, creates no misleading Private file, opens no
+application, and opens `/` if practical. The page explains that selection is
+unavailable and saving is disabled. A later start retries because Private
+remains absent.
+
+### Built-In Selection Page
+
+`GET /` is an English-only Mini Server welcome and selection page headed
+`Welcome to Mini Server`. It is internal runtime UI, not a directory listing,
+hosted application, persistence page, file below `www`, or access-control
+interface.
+
+Every `GET /` rereads current Shared and lists only its current valid
+applications in Shared order, with all choices initially selected. It never
+reads Private configuration for checkbox state or page choices. The UI clearly
+describes a fresh selection whose save completely replaces the existing
+personal selection. This same behavior applies to later manual visits to `/`.
+
+The page is deliberately pleasant, clean, modern, responsive, and
+self-contained. It provides clear choices, a primary `Save selection` action,
+success/error feedback, and the canonical advanced-user path. It uses no
+external CDN, font, asset, framework, analytics, tracking, service, or internet
+dependency.
+
+### Save Contract
+
+The canonical route is:
+
+```text
+POST /__miniserver/start-sites
+```
+
+It accepts `application/json` containing exactly one `sites` array of strings.
+Malformed JSON, a wrong media type or structure, additional top-level members,
+or non-string entries are rejected without a write.
+
+For a structurally valid payload, the server rereads and revalidates current
+Shared at save time. If Shared is unavailable, saving fails without changing
+Private. Otherwise, submitted names are untrusted membership requests: names
+outside current valid Shared are discarded, accepted membership is
+deduplicated and restored to Shared order, and that normalized result safely
+replaces the complete UTF-8 Private file. The old Private file is not read to
+derive the result and is never merged. An empty selection produces an existing
+empty file.
+
+The endpoint is handled as Mini Server infrastructure on the existing
+loopback-bound listener. It writes only the canonical Private start-site file;
+it cannot write Shared configuration, persistence, runtime state,
+client-selected targets, or arbitrary paths. It adds no CORS, general settings
+API, authentication, or account system. Saving does not open applications and
+becomes effective on the next normal start action.
+
+### Rationale
+
+Initializing an explicit current-user file gives later Shared changes
+predictable opt-in behavior. Opening a focused welcome page makes that initial
+choice understandable without conflating automatic-opening preferences with
+application access. Shared-only, all-checked page state intentionally offers a
+simple reset/reselection workflow rather than pretending to edit saved state.
+
+### Consequences
+
+- A missing Private file no longer means “open all Shared without creating a
+  file.”
+- Existing Private files retain Shared-intersection semantics and are not
+  rewritten during normal start evaluation.
+- Root-page choices cannot disclose or be affected by prior Private contents.
+- Shared is authoritative both when displaying choices and at save time.
+- Private can reduce but never elevate or reorder Shared.
+- Start-site selection remains independent of discovery, static serving,
+  persistence, authentication, authorization, and direct URL access.
+- Runtime coordination, stop behavior, port allocation, persistence, and Java
+  8 compatibility remain unchanged.
 
 ---
 

@@ -15,6 +15,7 @@ The server provides:
 - Dynamic loopback-only HTTP startup
 - Local per-user/computer instance coordination
 - Shared and private start-site selection and Windows-default browser opening
+- A built-in welcome and start-site replacement-selection page
 - Concurrency-safe file persistence
 
 The server remains generic and does not interpret application-specific data.
@@ -69,16 +70,17 @@ These files are never served as web content and are never coordinated through a 
 
 ### Private Mini Server Configuration
 
-Current-user Mini Server configuration is stored at:
+Current-user Mini Server configuration is stored under the canonical roaming
+user-profile root with canonical directory casing:
 
-    %APPDATA%\MiniServer\config\start-sites.txt
+    %APPDATA%\MiniServer\Config\start-sites.txt
 
 This file allows the current Windows user to select a subset of the Shared installation approval list. It is configuration for Mini Server itself, not application persistence, runtime coordination state, or a packaged installation default.
 
 Private Mini Server configuration is distinct from:
 
 - Local runtime coordination at `%LOCALAPPDATA%\MiniServer\runtime\`
-- Private application persistence at `%APPDATA%\MiniServerData\<site>\data\data.json`
+- Private application persistence at `%APPDATA%\MiniServer\Data\<site>\data.json`
 - Shared installation configuration at `<installation-root>\config\start-sites.txt`
 
 ### Shared Persistence
@@ -93,13 +95,51 @@ When the installation is on a network or group drive, this file is shared by use
 
 Private application persistence is stored in the current Windows user's profile:
 
-    %APPDATA%\MiniServerData\<site>\data\data.json
+    %APPDATA%\MiniServer\Data\<site>\data.json
 
-This structure intentionally mirrors the shared application's `data\data.json` structure.
+There is no second `data` directory below the Private site directory. The
+canonical roaming root therefore separates current-user concerns as:
+
+    %APPDATA%\MiniServer\
+    ├── Config\
+    │   └── start-sites.txt
+    └── Data\
+        └── <site>\
+            └── data.json
 
 `private` means user-profile storage rather than shared-installation storage. It is not authentication, authorization, encryption, or a security boundary between mutually hostile applications.
 
 The Java source and build layout is defined by D-019 and remains separate from these runtime locations.
+
+### Private Persistence Migration
+
+Mini Server v1.0.0 released Private application persistence at:
+
+    %APPDATA%\MiniServerData\<site>\data\data.json
+
+This is a legacy migration source, not a current v1.1 persistence location.
+Before normal Private persistence use for a valid site, v1.1 resolves the
+canonical and legacy files in this order:
+
+1. If `%APPDATA%\MiniServer\Data\<site>\data.json` exists, it is
+   authoritative. Legacy data never overwrites or merges into it.
+2. If the canonical file is absent and the legacy file exists, Mini Server
+   establishes the canonical file safely from the legacy content before the
+   Private operation proceeds.
+3. If neither exists, the not-yet-created Private store belongs at the new
+   canonical location.
+
+Migration uses the established bounded-locking and atomic-replacement
+integrity principles. It preserves the legacy file content, coordinates
+concurrent attempts, and rechecks canonical-file precedence before committing.
+The legacy file is removed only after the canonical file is safely established.
+Empty legacy directories may then be removed best-effort; cleanup failure is
+nonfatal after successful migration. A migration failure leaves legacy data
+intact, fails the affected operation cleanly, and never silently truncates,
+overwrites, or destroys that data.
+
+There is no dual-write, merge, permanent alias, or ongoing fallback model.
+Once the canonical file exists, later Private operations use only it.
 
 ## Web Application Model
 
@@ -112,7 +152,7 @@ Each valid first-level directory below `www` represents a web application:
 An application owns its static HTML, CSS, JavaScript, and assets. It can use both persistence scopes:
 
     shared:  <installation-root>\www\<site>\data\data.json
-    private: %APPDATA%\MiniServerData\<site>\data\data.json
+    private: %APPDATA%\MiniServer\Data\<site>\data.json
 
 Both scopes use the same JSON structure and persistence operations. Every operation must select one scope explicitly; there is no default scope.
 
@@ -122,12 +162,16 @@ Automatic application opening uses two configuration levels:
 
 ```text
 Shared:  <installation-root>\config\start-sites.txt
-Private: %APPDATA%\MiniServer\config\start-sites.txt
+Private: %APPDATA%\MiniServer\Config\start-sites.txt
 ```
 
 Shared is the upper bound: it defines which currently valid applications are centrally approved for automatic opening and their canonical opening order. Private belongs to the current Windows user and can reduce the Shared selection but cannot elevate an application outside it or reorder it.
 
-When Private exists, the effective selection is the intersection of valid existing applications, Shared-approved applications, and Private-selected applications. When Private is missing, the complete valid Shared selection is effective. An existing empty or effectively empty Private file selects none.
+When Private exists, the effective selection is the intersection of valid
+existing applications, Shared-approved applications, and Private-selected
+applications. Shared order remains authoritative. An existing empty or
+effectively empty Private file selects none, and newly added Shared entries do
+not enter an existing Private selection automatically.
 
 Both files use the same simple UTF-8 line-oriented application-name syntax defined by REQ-010. Invalid, unsafe, reserved, and duplicate entries are ignored. Shared entries must correspond to valid first-level applications below `www/`; Private entries are matched only against the resulting valid Shared set.
 
@@ -135,11 +179,85 @@ Application discovery and serving remain based on valid first-level directories 
 
 The v1.1 distribution contains `example` as the default active entry in the Shared file. It does not package a pre-created Private file. The Java implementation has no special hard-coded startup behavior for `example`; it opens only when it is in the effective selection.
 
-Both files are evaluated on every normal start action, including repeated starts. A change to either file therefore takes effect on the next `start.bat` invocation without restarting the active server. No watcher or active reload service is used, and neither file is automatically rewritten during normal startup.
+Both files are evaluated on every normal start action, including repeated
+starts. A change to either file therefore takes effect on the next `start.bat`
+invocation without restarting the active server. No watcher or active reload
+service is used.
+
+When a normal start action finds no Private file, it initializes the file only
+after server readiness, active-port discovery, and valid runtime-state
+publication. A readable Shared file is normalized to its current valid
+application list, and only those canonical names are safely written to the new
+Private file in Shared order. Comments, invalid entries, duplicates, and
+missing applications are not copied. A readable Shared file with an empty
+valid selection may create an empty Private file.
+
+The initialization start opens only the built-in root page at
+`http://127.0.0.1:<active-port>/`; it opens no application URL. If Shared is
+missing, unreadable, or cannot be resolved, the server remains active, no
+Private file is fabricated, no application opens automatically, and the root
+page is opened if practical. A later start retries while Private remains
+absent.
 
 A missing, empty, effectively empty, or unreadable Shared file means that no application is opened automatically. An unreadable Private file also opens none rather than falling back to all Shared applications. Configuration-reading failures do not invalidate an already successful server and produce concise diagnostics.
 
-Removing an application from Shared removes it from every user's effective selection on the next start action, even if stale Private entries remain. Re-adding it selects it for users without a Private file and for users with a Private file only when their file still contains it.
+Removing an application from Shared removes it from every user's effective
+selection on the next start action, even if stale Private entries remain.
+Re-adding it affects an existing Private selection only when that file still
+contains it.
+
+## Built-In Welcome and Start-Site Selection
+
+`GET /` is reserved for Mini Server-owned runtime infrastructure. It returns an
+English-only welcome and replacement-selection page headed `Welcome to Mini
+Server`. The page is not a directory listing, hosted application, persistence
+API, normal file below `www`, or authentication/authorization interface.
+
+Every request for `/` rereads current Shared configuration and applies the
+normal Shared parsing, safety, and application-existence rules. The page lists
+only current valid Shared-approved applications in Shared order and initially
+checks all of them. It never reads Private configuration to determine checkbox
+state or page choices. Physical applications absent from Shared, `_shared`,
+unsafe entries, invalid entries, and missing applications are never offered.
+The page explains that saving creates a new selection and completely replaces,
+rather than displays or merges with, the current personal selection.
+
+The page uses self-contained HTML, CSS, and JavaScript with a clean, modern,
+responsive desktop layout, clear checkbox choices, a primary `Save selection`
+action, and concise success/error feedback. It shows the advanced-user path
+`%APPDATA%\MiniServer\Config\start-sites.txt`. It has no external CDN, font,
+asset, UI framework, analytics, tracking, service, or internet dependency.
+
+If Shared is readable but has no current valid applications, the page explains
+that none are available and can save an empty selection. If Shared is
+unavailable or cannot be validated, the page explains that applications cannot
+currently be selected and saving is disabled.
+
+The canonical save route is:
+
+    POST /__miniserver/start-sites
+
+It accepts only `application/json` with exactly one `sites` array of strings.
+Malformed or structurally invalid payloads are rejected without a write. For a
+valid payload, the server rereads and revalidates current Shared configuration;
+if Shared is unavailable, it refuses the save. Otherwise it treats submitted
+names only as requested membership, discards names outside the current valid
+Shared set, deduplicates them, restores Shared canonical order, and safely
+replaces the complete Private UTF-8 file. An empty selection creates an
+existing empty file. The previous Private file is neither read to derive the
+result nor merged into it.
+
+The endpoint is handled before application API/static routing on the existing
+loopback-bound listener. It writes only the canonical Private start-site file;
+the client cannot choose a target, path, URL, Shared configuration,
+persistence file, or runtime file. It is not a general settings API, adds no
+CORS, and introduces no authentication or account model. Saving does not open
+applications and takes effect on the next normal start action.
+
+A later manual visit to `/` intentionally repeats the same Shared-only,
+all-checked replacement workflow. Start-site UI and selection remain browser
+conveniences only; application discovery, static serving, persistence, and
+direct URL access remain independent.
 
 ## Static File Serving
 
@@ -195,7 +313,7 @@ For example:
 
 maps to:
 
-    %APPDATA%\MiniServerData\dashboard\data\data.json
+    %APPDATA%\MiniServer\Data\dashboard\data.json
 
 while:
 
@@ -294,7 +412,10 @@ A valid Section name:
 
 Section names are JSON property names and are never filesystem paths.
 
-If a selected persistence file is missing, a valid modifying operation may create the required `data` directory and `data.json` inside the server-derived shared or private site location.
+If a selected persistence file is missing, a valid modifying operation may
+create its server-derived location. Shared creation uses the reserved
+`www\<site>\data\data.json` structure; Private creation uses
+`%APPDATA%\MiniServer\Data\<site>\data.json` after any required v1.0 migration.
 
 Invalid JSON or a non-object root is an error. Mini Server does not silently reinterpret or destructively reset invalid persistence data.
 
@@ -416,13 +537,19 @@ A startup attempt:
 4. Confirms that the HTTP server is ready.
 5. Publishes the port and an unpredictable per-instance stop token in local `instance.json`.
 6. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
-7. Reads and evaluates Shared `config\start-sites.txt`.
-8. Reads and evaluates Private `%APPDATA%\MiniServer\config\start-sites.txt` if it exists.
-9. Computes the effective Private subset of the valid Shared selection.
-10. Preserves Shared order.
-11. Constructs application URLs using `127.0.0.1` and the actual active port.
-12. Asks Windows to open each URL in effective order using its configured HTTP URL handler.
-13. Continues the server lifetime independently of browser lifetime.
+7. Checks canonical Private `%APPDATA%\MiniServer\Config\start-sites.txt`.
+8. If Private is missing, reads and validates current Shared configuration,
+   safely initializes Private from only the valid normalized Shared names when
+   Shared is available, and asks Windows to open only the built-in `/` page.
+9. If Private already exists, rereads Shared and Private, computes the current
+   valid Shared/Private intersection in Shared order, and asks Windows to open
+   those application URLs without automatically opening `/`.
+10. Uses `127.0.0.1` and the actual active port for every browser URL.
+11. Continues the server lifetime independently of browser lifetime.
+
+If missing-Private initialization cannot use current Shared configuration, no
+Private file is created, no application URL opens, and the root page is opened
+if practical so it can explain that selection is currently unavailable.
 
 ### Repeated Local Start
 
@@ -430,13 +557,13 @@ If `instance.lock` is owned by the active local server, the repeated start:
 
 1. Does not start another HTTP server or request another port.
 2. Obtains valid local `instance.json` state and reuses the active local port.
-3. Rereads and evaluates current Shared configuration.
-4. Rereads and evaluates current Private configuration if it exists.
-5. Recomputes the effective Private subset of the valid Shared selection.
-6. Preserves Shared order.
-7. Constructs application URLs using the existing active port.
-8. Asks Windows to open each URL using its configured HTTP URL handler.
-9. Exits normally.
+3. Checks canonical Private configuration and rereads current Shared.
+4. If Private is missing, performs the same Shared-derived initialization and
+   opens only `/` on the existing active port.
+5. If Private exists, rereads it, recomputes the current valid Shared/Private
+   intersection in Shared order, and opens those application URLs without
+   automatically opening `/`.
+6. Exits normally.
 
 If an active lock exists but valid state cannot be obtained within the bounded startup procedure, the repeated start fails clearly instead of starting a competing process.
 
@@ -454,8 +581,13 @@ server startup
 
 A start-site evaluation or browser-opening failure must not retroactively invalidate an already successfully running server.
 
-- Missing, empty, effectively empty, or unreadable Shared configuration leaves the server running and opens no application automatically; Private cannot bypass this boundary.
-- Missing Private configuration uses the complete valid Shared selection.
+- Missing or unreadable Shared configuration leaves the server running and
+  opens no application automatically. When Private is missing, it also prevents
+  initialization and saving, leaves Private absent, and opens `/` if practical.
+- Readable Shared configuration with no valid applications may initialize an
+  empty Private file and presents an empty available list on `/`.
+- Missing Private configuration is initialized from current valid Shared and
+  opens only `/` on that action; it never directly opens the initialized apps.
 - Empty or effectively empty Private configuration leaves the server running and opens no application automatically.
 - Unreadable Private configuration leaves the server running and opens none rather than falling back to the complete Shared selection.
 - Unreadable configuration produces a concise diagnostic without altering runtime coordination or persistence.
@@ -485,7 +617,14 @@ The normal startup and repeated-start locks remain authoritative. Transactionall
 perfect behavior for start and stop commands launched at the exact same instant
 is intentionally outside this small launcher design.
 
-Current startup and browser authority is divided between D-020 for runtime coordination, D-024 for detached start and graceful stop, D-025 and REQ-009 for Windows browser opening, and D-027 and REQ-010 for Shared and Private start-site selection. D-026 is the superseded installation-only start-site decision. REQ-006 remains the archived historical v1.0 startup/browser contract rather than the active v1.1 browser requirement.
+Current startup and browser authority is divided between D-020 for runtime
+coordination, D-024 for detached start and graceful stop, D-025 and REQ-009 for
+Windows browser opening, and D-027/D-029 with REQ-010 for Shared/Private
+selection, initialization, and the built-in selection page. D-026 is the
+superseded installation-only start-site decision. REQ-006 remains the archived
+historical v1.0 startup/browser contract rather than the active v1.1 browser
+requirement. D-028 and REQ-011 define the current-user storage hierarchy and
+Private-data migration.
 
 ## Architectural Principles
 
@@ -495,9 +634,13 @@ Current startup and browser authority is divided between D-020 for runtime coord
 - Keep every HTTP listener loopback-only and dynamically allocated.
 - Require explicit shared or private persistence scope for every operation.
 - Derive controlled persistence locations on the server.
+- Keep roaming `Config` and `Data` below one canonical current-user root while
+  keeping local transient runtime state separate.
 - Keep private user storage distinct from a security boundary.
 - Separate runtime coordination locks from persistence write locks.
 - Use bounded locking and atomic persistence writes.
+- Keep built-in runtime UI self-contained and independent of hosted
+  applications and external services.
 - Avoid unnecessary frameworks, services, and persistent logging infrastructure.
 
 ## Related Documents
