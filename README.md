@@ -49,7 +49,6 @@ Mini Server is a lightweight, portable Windows web server for local or trusted i
 
 The server listens only on `127.0.0.1` and lets the operating system select an available TCP port. It is designed for local use and is not intended for exposure to the public internet.
 
-Mini Server is currently being prepared for its initial v1.0 release.
 
 ## Features
 
@@ -206,7 +205,6 @@ Mini Server ist ein leichtgewichtiger, portabler Windows-Webserver für lokale o
 
 Der Server lauscht ausschließlich auf `127.0.0.1`. Einen freien TCP-Port wählt das Betriebssystem automatisch aus. Mini Server ist für den lokalen Einsatz vorgesehen und nicht für den öffentlichen Internetbetrieb bestimmt.
 
-Mini Server wird derzeit für das erste v1.0-Release vorbereitet.
 
 ## Funktionen
 
