@@ -37,6 +37,14 @@ final class MiniServerApplication {
     }
 
     StartupResult start() throws StartupException {
+        return start(Action.NORMAL);
+    }
+
+    StartupResult configure() throws StartupException {
+        return start(Action.CONFIGURE);
+    }
+
+    private StartupResult start(Action action) throws StartupException {
         StartupResult result = startup.start();
 
         if (result.isExistingInstance()) {
@@ -47,23 +55,27 @@ final class MiniServerApplication {
         }
 
         List<String> urls = new ArrayList<String>();
-        try {
-            StartSitePlan plan = startSiteProvider.planStartSites();
-            if (plan.getDiagnostic() != null) {
-                errorOutput.println(plan.getDiagnostic());
-            }
-            if (plan.getKind() == StartSitePlan.Kind.ROOT) {
-                urls.add(LocalServerUrl.rootForPort(result.getPort()));
-            } else if (plan.getKind() == StartSitePlan.Kind.APPLICATIONS) {
-                for (String startSite : plan.getSites()) {
-                    urls.add(new LocalServerUrl(startSite).forPort(result.getPort()));
+        if (action == Action.CONFIGURE) {
+            urls.add(LocalServerUrl.rootForPort(result.getPort()));
+        } else {
+            try {
+                StartSitePlan plan = startSiteProvider.planStartSites();
+                if (plan.getDiagnostic() != null) {
+                    errorOutput.println(plan.getDiagnostic());
                 }
+                if (plan.getKind() == StartSitePlan.Kind.ROOT) {
+                    urls.add(LocalServerUrl.rootForPort(result.getPort()));
+                } else if (plan.getKind() == StartSitePlan.Kind.APPLICATIONS) {
+                    for (String startSite : plan.getSites()) {
+                        urls.add(new LocalServerUrl(startSite).forPort(result.getPort()));
+                    }
+                }
+            } catch (IOException | RuntimeException exception) {
+                errorOutput.println(
+                        "Start-site configuration could not be read. "
+                                + "Opening the recovery page instead.");
+                urls.add(LocalServerUrl.rootForPort(result.getPort()));
             }
-        } catch (IOException | RuntimeException exception) {
-            errorOutput.println(
-                    "Start-site configuration could not be read. "
-                            + "No applications were opened automatically.");
-            return result;
         }
 
         for (String url : urls) {
@@ -78,5 +90,10 @@ final class MiniServerApplication {
         }
 
         return result;
+    }
+
+    private enum Action {
+        NORMAL,
+        CONFIGURE
     }
 }

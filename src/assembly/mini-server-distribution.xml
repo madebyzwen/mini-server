@@ -52,6 +52,13 @@
             <lineEnding>dos</lineEnding>
         </file>
         <file>
+            <source>${project.basedir}/src/distribution/configure.bat</source>
+            <outputDirectory>/</outputDirectory>
+            <destName>configure.bat</destName>
+            <fileMode>0755</fileMode>
+            <lineEnding>dos</lineEnding>
+        </file>
+        <file>
             <source>${project.basedir}/src/distribution/stop.bat</source>
             <outputDirectory>/</outputDirectory>
             <destName>stop.bat</destName>

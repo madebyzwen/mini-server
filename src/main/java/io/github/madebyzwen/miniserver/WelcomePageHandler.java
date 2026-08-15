@@ -6,8 +6,10 @@ import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 
-/** Serves the Mini Server start-site selection page at the loopback root. */
+/** Serves the Mini Server start-site setup, editing, and recovery page. */
 final class WelcomePageHandler implements HttpHandler {
 
     private static final String DISPLAY_CONFIGURATION_PATH =
@@ -27,39 +29,78 @@ final class WelcomePageHandler implements HttpHandler {
             return;
         }
 
-        ConfiguredStartSiteProvider.SharedStartSites shared;
-        try {
-            shared = startSites.loadSharedStartSites();
-        } catch (IOException | RuntimeException exception) {
-            shared = ConfiguredStartSiteProvider.SharedStartSites.unavailable();
-        }
         respond(exchange, 200, "text/html; charset=utf-8",
-                page(shared, DISPLAY_CONFIGURATION_PATH));
+                page(startSites.loadRootPageState(), DISPLAY_CONFIGURATION_PATH));
     }
 
     private static String page(
-            ConfiguredStartSiteProvider.SharedStartSites shared,
+            ConfiguredStartSiteProvider.RootPageState state,
             String privateConfigurationPath) {
-        StringBuilder choices = new StringBuilder();
+        ConfiguredStartSiteProvider.SharedStartSites shared = state.getShared();
+        Set<String> selected = new HashSet<String>(state.getSelectedSites());
+        StringBuilder content = new StringBuilder();
+
         if (!shared.isAvailable()) {
-            choices.append("<p class=\"state\">Shared start-site approval is unavailable. "
-                    + "No application selection can be saved.</p>");
+            content.append("<p class=\"state warning\">Shared start-site approval cannot "
+                    + "currently be read. No application selection can be saved.</p>");
         } else if (shared.getSites().isEmpty()) {
-            choices.append("<p class=\"state\">No applications are currently approved "
-                    + "for automatic opening.</p>"
-                    + "<button type=\"submit\">Save empty selection</button>");
+            content.append("<p class=\"state\">There are currently no applications "
+                    + "available to select or save.</p>");
         } else {
-            choices.append("<fieldset><legend>Applications to open on later starts</legend>");
+            if (state.getPrivateState()
+                    == ConfiguredStartSiteProvider.PrivateSelectionState.MISSING) {
+                content.append("<p class=\"state\">Choose at least one application. "
+                        + "Nothing is saved until Save and open succeeds.</p>");
+            } else if (state.getPrivateState()
+                    == ConfiguredStartSiteProvider.PrivateSelectionState.UNREADABLE) {
+                content.append("<p class=\"state warning\">Your existing personal "
+                        + "selection could not be read. No saved selection has been "
+                        + "guessed; choose a replacement selection.</p>");
+            } else {
+                content.append("<p class=\"state\">This page shows your current personal "
+                        + "selection among the applications currently approved in Shared.</p>");
+            }
+
+            content.append("<fieldset><legend>Applications</legend>");
             for (String site : shared.getSites()) {
                 String escaped = escapeHtml(site);
-                choices.append("<label><input type=\"checkbox\" name=\"site\" value=\"")
+                content.append("<label><input type=\"checkbox\" name=\"site\" value=\"")
                         .append(escaped)
-                        .append("\" checked> <span>")
+                        .append("\"");
+                if (selected.contains(site)) {
+                    content.append(" checked");
+                }
+                content.append("> <span>")
                         .append(escaped)
                         .append("</span></label>");
             }
-            choices.append("</fieldset><button type=\"submit\">Save selection</button>");
+            content.append("</fieldset><button id=\"save\" type=\"submit\"");
+            if (selected.isEmpty()) {
+                content.append(" disabled");
+            }
+            content.append(">Save and open</button>");
         }
+
+        String script = state.isSavingAvailable()
+                ? "<script>const f=document.getElementById('selection'),"
+                + "s=document.getElementById('status'),b=document.getElementById('save'),"
+                + "inputs=[...f.querySelectorAll('input[name=site]')];let saving=false;"
+                + "const chosen=()=>inputs.filter(x=>x.checked).map(x=>x.value);"
+                + "const update=()=>{b.disabled=saving||chosen().length===0};"
+                + "inputs.forEach(x=>x.addEventListener('change',update));update();"
+                + "f.addEventListener('submit',async e=>{e.preventDefault();"
+                + "if(saving)return;const sites=chosen();if(sites.length===0){update();return;}"
+                + "saving=true;update();s.textContent='Saving selection…';try{"
+                + "const r=await fetch('/__miniserver/start-sites',{method:'POST',headers:{"
+                + "'Content-Type':'application/json'},body:JSON.stringify({sites})});"
+                + "if(!r.ok)throw new Error('save failed');const result=await r.json();"
+                + "if(!result||!Array.isArray(result.targets)||result.targets.length===0"
+                + "||typeof result.targets[0]!=='string')throw new Error('invalid response');"
+                + "s.textContent='Selection saved. Opening applications…';"
+                + "window.location.replace(result.targets[0]);}catch(error){saving=false;"
+                + "s.textContent='Selection could not be saved. Please try again.';update();}});"
+                + "</script>"
+                : "";
 
         return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -72,26 +113,21 @@ final class WelcomePageHandler implements HttpHandler {
                 + "legend{font-weight:700;margin-bottom:.75rem}label{display:flex;gap:.5rem;padding:.65rem;"
                 + "margin:.4rem 0;border:1px solid #d8dfeb;border-radius:.55rem}input{width:1.15rem}"
                 + "button{border:0;border-radius:.55rem;background:#1557d5;color:white;font-weight:700;"
-                + "padding:.8rem 1.1rem;cursor:pointer}label:hover{border-color:#7d9bd0}"
-                + "input:focus-visible,button:focus-visible{outline:3px solid #8ab4ff;outline-offset:2px}"
-                + ".path{overflow-wrap:anywhere;background:#f4f7fb;"
-                + "padding:.65rem;border-radius:.45rem;font-family:ui-monospace,monospace;font-size:.85rem}"
-                + "#status{min-height:1.5rem;font-weight:600}.state{padding:1rem;background:#fff5d9;"
-                + "border-radius:.55rem}</style></head><body><main><h1>Welcome to Mini Server</h1>"
-                + "<p>Choose which Shared-approved applications should open automatically on "
-                + "later start actions. Saving creates a new personal selection and replaces "
-                + "your existing personal start selection. The checked choices do not display "
-                + "your current selection.</p>"
-                + "<form id=\"selection\">" + choices + "</form><p id=\"status\" role=\"status\"></p>"
+                + "padding:.8rem 1.1rem;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}"
+                + "label:hover{border-color:#7d9bd0}input:focus-visible,button:focus-visible{"
+                + "outline:3px solid #8ab4ff;outline-offset:2px}.path{overflow-wrap:anywhere;"
+                + "background:#f4f7fb;padding:.65rem;border-radius:.45rem;"
+                + "font-family:ui-monospace,monospace;font-size:.85rem}#status{min-height:1.5rem;"
+                + "font-weight:600}.state{padding:1rem;background:#edf6ff;border-radius:.55rem}"
+                + ".warning{background:#fff5d9}</style></head><body><main>"
+                + "<h1>Welcome to Mini Server</h1>"
+                + "<p>Save replaces your complete personal selection, opens the normalized "
+                + "selection immediately, and uses it for future normal starts.</p>"
+                + "<form id=\"selection\">" + content + "</form>"
+                + "<p id=\"status\" role=\"status\"></p>"
                 + "<p>Your selection is stored at:</p><p class=\"path\">"
-                + escapeHtml(privateConfigurationPath) + "</p><script>"
-                + "const f=document.getElementById('selection'),s=document.getElementById('status');"
-                + "f.addEventListener('submit',async e=>{e.preventDefault();s.textContent='Saving…';"
-                + "const sites=[...f.querySelectorAll('input[name=site]:checked')].map(x=>x.value);"
-                + "try{const r=await fetch('/__miniserver/start-sites',{method:'POST',headers:{"
-                + "'Content-Type':'application/json'},body:JSON.stringify({sites})});"
-                + "s.textContent=r.ok?'Selection saved.':'Selection could not be saved.'}"
-                + "catch(e){s.textContent='Selection could not be saved.'}});</script></main></body></html>";
+                + escapeHtml(privateConfigurationPath) + "</p>" + script
+                + "</main></body></html>";
     }
 
     static String escapeHtml(String value) {

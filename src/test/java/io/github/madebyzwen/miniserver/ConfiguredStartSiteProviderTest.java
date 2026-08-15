@@ -232,7 +232,7 @@ class ConfiguredStartSiteProviderTest {
     }
 
     @Test
-    void missingPrivateIsInitializedFromSharedAndPlansOnlyTheRoot() throws Exception {
+    void missingPrivatePlansRootWithoutCreatingPrivateConfiguration() throws Exception {
         createApplications("first", "second");
         write(sharedConfiguration, "first", "second");
 
@@ -240,31 +240,50 @@ class ConfiguredStartSiteProviderTest {
 
         assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
         assertTrue(plan.getSites().isEmpty());
-        assertEquals(
-                Arrays.asList("first", "second"),
-                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
+        assertFalse(Files.exists(privateConfiguration));
     }
 
     @Test
-    void readableEmptySharedInitializesAnEmptyPrivateFileAndPlansRoot() throws Exception {
+    void firstRunRemainsUncommittedUntilSaveThenPlansSavedApplications()
+            throws Exception {
+        createApplications("first", "second");
+        write(sharedConfiguration, "first", "second");
+        ConfiguredStartSiteProvider provider = provider();
+
+        assertEquals(StartSitePlan.Kind.ROOT, provider.planStartSites().getKind());
+        assertFalse(Files.exists(privateConfiguration));
+        assertEquals(StartSitePlan.Kind.ROOT, provider.planStartSites().getKind());
+        assertFalse(Files.exists(privateConfiguration));
+
+        assertEquals(Arrays.asList("first", "second"),
+                provider.saveSelection(Arrays.asList("second", "first")));
+        assertEquals(Arrays.asList("first", "second"),
+                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
+        StartSitePlan saved = provider.planStartSites();
+        assertEquals(StartSitePlan.Kind.APPLICATIONS, saved.getKind());
+        assertEquals(Arrays.asList("first", "second"), saved.getSites());
+    }
+
+    @Test
+    void readableEmptySharedPlansRootWithoutCreatingPrivateConfiguration() throws Exception {
         write(sharedConfiguration);
 
         StartSitePlan plan = provider().planStartSites();
 
         assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
-        assertTrue(Files.isRegularFile(privateConfiguration));
-        assertEquals(0L, Files.size(privateConfiguration));
+        assertFalse(Files.exists(privateConfiguration));
     }
 
     @Test
-    void unavailableSharedPlansRootOnlyWhenPrivateIsMissing() throws Exception {
+    void unavailableSharedAlwaysPlansRecoveryRoot() throws Exception {
         StartSitePlan first = provider().planStartSites();
         assertEquals(StartSitePlan.Kind.ROOT, first.getKind());
         assertFalse(Files.exists(privateConfiguration));
 
         write(privateConfiguration, "first");
         StartSitePlan existing = provider().planStartSites();
-        assertEquals(StartSitePlan.Kind.NONE, existing.getKind());
+        assertEquals(StartSitePlan.Kind.ROOT, existing.getKind());
+        assertTrue(existing.getDiagnostic().contains("unavailable"));
     }
 
     @Test
@@ -294,8 +313,12 @@ class ConfiguredStartSiteProviderTest {
                 Arrays.asList("first", "third"),
                 Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
 
-        provider().saveSelection(Collections.<String>emptyList());
-        assertEquals(0L, Files.size(privateConfiguration));
+        assertThrows(
+                ConfiguredStartSiteProvider.EmptySelectionException.class,
+                () -> provider().saveSelection(Collections.<String>emptyList()));
+        assertEquals(
+                Arrays.asList("first", "third"),
+                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
     }
 
     @Test
@@ -307,6 +330,23 @@ class ConfiguredStartSiteProviderTest {
                 () -> provider().saveSelection(Collections.singletonList("replacement")));
         assertEquals(
                 Collections.singletonList("existing"),
+                Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void saveRejectsUnreadableSharedAndPreservesPrivateSelection() throws Exception {
+        write(privateConfiguration, "existing");
+        ConfiguredStartSiteProvider.ConfigurationFileReader reader = file -> {
+            if (file.equals(sharedConfiguration)) {
+                throw new IOException("deliberately unreadable Shared file");
+            }
+            return Optional.of(Collections.singletonList("existing"));
+        };
+
+        assertThrows(
+                ConfiguredStartSiteProvider.SharedConfigurationUnavailableException.class,
+                () -> provider(reader).saveSelection(Collections.singletonList("replacement")));
+        assertEquals(Collections.singletonList("existing"),
                 Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
     }
 
@@ -327,7 +367,7 @@ class ConfiguredStartSiteProviderTest {
     }
 
     @Test
-    void unreadableExistingPrivatePlansNothingInsteadOfFallingBackOrOpeningRoot()
+    void unreadableExistingPrivatePlansRecoveryRootWithoutFallingBackToShared()
             throws Exception {
         ConfiguredStartSiteProvider.ConfigurationFileReader reader = file -> {
             if (file.equals(privateConfiguration)) {
@@ -338,54 +378,79 @@ class ConfiguredStartSiteProviderTest {
 
         StartSitePlan plan = provider(reader).planStartSites();
 
-        assertEquals(StartSitePlan.Kind.NONE, plan.getKind());
+        assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
         assertTrue(plan.getDiagnostic().contains("could not be read"));
     }
 
     @Test
-    void privateCreationFailurePlansRootAndDoesNotClaimInitialization() throws Exception {
-        createApplications("first");
-        write(sharedConfiguration, "first");
-        Path blockedParent = temporaryDirectory.resolve("blocked");
-        Files.write(blockedParent, new byte[] {1});
-        ConfiguredStartSiteProvider blocked = new ConfiguredStartSiteProvider(
-                webRoot,
-                sharedConfiguration,
-                blockedParent.resolve("Config/start-sites.txt"),
-                file -> file.equals(sharedConfiguration)
-                        ? Optional.of(Collections.singletonList("first"))
-                        : Optional.<List<String>>empty());
+    void zeroEffectivePrivateVariantsPlanRecoveryRoot() throws Exception {
+        createApplications("first", "second");
+        write(sharedConfiguration, "first", "second");
 
-        StartSitePlan plan = blocked.planStartSites();
+        write(privateConfiguration);
+        assertEquals(StartSitePlan.Kind.ROOT, provider().planStartSites().getKind());
 
-        assertEquals(StartSitePlan.Kind.ROOT, plan.getKind());
-        assertTrue(plan.getDiagnostic().contains("could not be initialized"));
-        assertFalse(Files.exists(blockedParent.resolve("Config/start-sites.txt")));
+        write(privateConfiguration, "# comment", "../invalid");
+        assertEquals(StartSitePlan.Kind.ROOT, provider().planStartSites().getKind());
+
+        write(privateConfiguration, "removed-application");
+        assertEquals(StartSitePlan.Kind.ROOT, provider().planStartSites().getKind());
     }
 
     @Test
-    void concurrentlyAppearingPrivateSelectionIsNeverOverwrittenByInitialization()
-            throws Exception {
+    void rootPageStateDistinguishesMissingReadableAndUnreadablePrivate() throws Exception {
         createApplications("first", "second");
         write(sharedConfiguration, "first", "second");
-        AtomicInteger privateReads = new AtomicInteger();
+
+        ConfiguredStartSiteProvider.RootPageState missing = provider().loadRootPageState();
+        assertEquals(ConfiguredStartSiteProvider.PrivateSelectionState.MISSING,
+                missing.getPrivateState());
+        assertEquals(Arrays.asList("first", "second"), missing.getSelectedSites());
+        assertTrue(missing.isSavingAvailable());
+        assertFalse(Files.exists(privateConfiguration));
+
+        write(privateConfiguration, "second", "stale");
+        ConfiguredStartSiteProvider.RootPageState readable = provider().loadRootPageState();
+        assertEquals(ConfiguredStartSiteProvider.PrivateSelectionState.READABLE,
+                readable.getPrivateState());
+        assertEquals(Collections.singletonList("second"), readable.getSelectedSites());
+
         ConfiguredStartSiteProvider.ConfigurationFileReader reader = file -> {
             if (file.equals(privateConfiguration)) {
-                if (privateReads.getAndIncrement() == 0) {
-                    write(privateConfiguration, "second");
-                    return Optional.empty();
-                }
-                return Optional.of(Files.readAllLines(file, StandardCharsets.UTF_8));
+                throw new IOException("deliberately unreadable Private file");
             }
-            return Optional.of(Files.readAllLines(file, StandardCharsets.UTF_8));
+            return Optional.of(Arrays.asList("first", "second"));
         };
+        ConfiguredStartSiteProvider.RootPageState unreadable = provider(reader).loadRootPageState();
+        assertEquals(ConfiguredStartSiteProvider.PrivateSelectionState.UNREADABLE,
+                unreadable.getPrivateState());
+        assertTrue(unreadable.getSelectedSites().isEmpty());
+        assertTrue(unreadable.isSavingAvailable());
+    }
 
-        StartSitePlan plan = provider(reader).planStartSites();
+    @Test
+    void rootPageStateMakesSavingUnavailableForEmptyOrUnavailableShared() throws Exception {
+        write(sharedConfiguration);
+        ConfiguredStartSiteProvider.RootPageState empty = provider().loadRootPageState();
+        assertTrue(empty.getShared().isAvailable());
+        assertFalse(empty.isSavingAvailable());
 
-        assertEquals(StartSitePlan.Kind.APPLICATIONS, plan.getKind());
-        assertEquals(Collections.singletonList("second"), plan.getSites());
-        assertEquals(
-                Collections.singletonList("second"),
+        Files.delete(sharedConfiguration);
+        ConfiguredStartSiteProvider.RootPageState unavailable = provider().loadRootPageState();
+        assertFalse(unavailable.getShared().isAvailable());
+        assertFalse(unavailable.isSavingAvailable());
+    }
+
+    @Test
+    void saveRejectsNormalizedZeroAndPreservesPrivateSelection() throws Exception {
+        createApplications("first");
+        write(sharedConfiguration, "first");
+        write(privateConfiguration, "first");
+
+        assertThrows(
+                ConfiguredStartSiteProvider.SelectionConflictException.class,
+                () -> provider().saveSelection(Arrays.asList("stale", "../unsafe")));
+        assertEquals(Collections.singletonList("first"),
                 Files.readAllLines(privateConfiguration, StandardCharsets.UTF_8));
     }
 

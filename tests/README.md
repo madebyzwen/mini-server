@@ -82,9 +82,11 @@ Priority areas include:
 - Safe start-site URL path-segment encoding
 - Canonical `%APPDATA%\MiniServer\Config` and `Data\<site>\data.json` resolution
 - Byte-preserving v1.0 Private-data migration, canonical precedence, locking, and cleanup
-- Missing-Private initialization and explicit root/application/none startup plans
-- Built-in root welcome page, HTML escaping, Shared-only choices, and empty/unavailable states
-- Strict replacement-selection JSON endpoint and save-time Shared revalidation
+- Missing-Private no-write setup and explicit root/application recovery planning
+- Context-sensitive root welcome page, HTML escaping, and empty/unavailable states
+- Strict minimum-one replacement endpoint, actual-port JSON targets, and save-time Shared revalidation
+- First-target same-tab navigation and injected additional-target browser launching
+- Dedicated configure mode for new and active instances, including failure isolation
 
 ## Test Independence
 
@@ -250,13 +252,17 @@ configuration failures, and rereading on repeated starts. Injectable file
 reading is used for deterministic unreadable-file tests rather than relying on
 operating-system permission changes.
 
-The suite also verifies normalized missing-Private initialization, explicit
-root/application/none browser-opening plans, current Shared revalidation, and
-atomic complete replacement of the canonical Private selection. Loopback HTTP
-tests cover the internal English `GET /` page, Shared-only all-checked choices,
-HTML escaping, empty and unavailable states, strict JSON payload validation,
-filtering/deduplication/Shared order, empty replacement, rejected-save
-preservation, and separation from stop, persistence API, and static routes.
+The suite also verifies missing-Private setup without a write, explicit
+root/application recovery plans, current Shared revalidation, and atomic
+complete replacement of the canonical Private selection. Loopback HTTP tests
+cover the English `GET /` page; missing, readable, and unreadable Private state;
+empty and unavailable Shared; strict JSON payload validation; minimum-one
+enforcement; filtering/deduplication/Shared order; rejected-save preservation;
+the `200` normalized sites/targets contract with the actual active port; first-
+target exclusion and additional-target browser launching; failure isolation;
+and separation from stop, persistence API, and static routes. Application tests
+cover normal and configure actions for new and active instances without a real
+GUI browser.
 
 ## Java Compatibility
 
@@ -277,7 +283,9 @@ Examples include:
 - Desktop shortcut or launcher behavior
 - First-run Windows-default-browser opening of the welcome page with its actual dynamic port
 - Responsive welcome-page presentation and visible save success/error feedback on Windows
-- Packaged Windows initialization, later reselection, and migrated Private-data behavior
+- Packaged Windows no-write first-run setup, later reselection, and migrated Private-data behavior
+- Immediate first-tab replacement and ordered additional default-browser opening
+- `configure.bat` for inactive and already-active server states
 - Interaction with existing default-browser instances
 - Browser-opening failure remaining nonfatal while exposing the active URL where practical
 - Closing the selected browser without stopping Mini Server

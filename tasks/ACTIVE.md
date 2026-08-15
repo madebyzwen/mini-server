@@ -6,11 +6,10 @@ This document records the current approved implementation work for Mini Server.
 
 Mini Server v1.0.0 has been released. The approved v1.1 scope is defined by REQ-009, revised REQ-010, and REQ-011.
 
-T-015 and T-016 have been completed. Manual Windows verification of the current
-T-018 implementation exposed interaction defects, so D-030 and revised REQ-010
-require another implementation, automated-verification, packaging, and Windows
-verification pass. T-018 remains Planned. T-017 remains Planned as the final
-v1.1 verification task after the post-D-030 T-018 implementation.
+T-015 and T-016 have been completed. The post-D-030 T-018 source correction and
+local automated/package verification are complete. Repeat packaged Windows
+verification is still required, so T-018 remains Planned. T-017 remains Planned
+as the final v1.1 verification task after T-018.
 
 ## T-015 — Implement Default Browser Launch
 
@@ -147,10 +146,10 @@ Acceptance:
 Status: Planned
 
 Implementation note: the current source, tests, launchers, and distribution
-implement the pre-D-030 interaction model. Manual Windows verification found
-that model unacceptable. A separate correction pass must implement revised
-REQ-010 and D-030, then rerun automated and packaged Windows verification.
-The prior Windows attempt did not complete T-018 and is not T-017 evidence.
+implement revised REQ-010 and D-030. Local automated tests, packaging, and
+distribution verification have been updated for that model. Repeat manual
+verification of the packaged result on Windows is still required. The prior
+pre-D-030 Windows attempt did not complete T-018 and is not T-017 evidence.
 
 Related requirements:
 
@@ -463,7 +462,7 @@ The approved v1.1 task order is:
 
 1. T-015 — Done
 2. T-016 — Done
-3. T-018 — Planned; post-D-030 implementation correction and repeat packaged Windows verification required
+3. T-018 — Planned; implementation complete, repeat packaged Windows verification required
 4. T-017 — Planned, final verification only after post-D-030 T-018
 
 The completed v1.0 implementation history remains preserved by Git history, the `v1.0.0` tag, `releases/v1.0.md`, and `docs/notes/V1.0-RELEASE-VERIFICATION.md`.

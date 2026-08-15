@@ -15,8 +15,10 @@ Installation and startup
 No installer or administrator rights are normally required. Mini Server
 listens only on 127.0.0.1 and lets Windows select an available port.
 On a first v1.1 start without a personal selection, the Windows default browser
-opens the built-in Welcome to Mini Server page. Select and save the applications
-that should open on later start actions.
+opens the built-in Welcome to Mini Server page. All available applications are
+proposed, but no personal file is created until Save and open succeeds. Saving
+requires at least one application, immediately opens the selection, and also
+controls later normal starts.
 If the browser cannot be opened, Mini Server remains active and its runtime
 state remains valid. start.bat does not wait for startup or browser-opening
 confirmation because the server process is detached.
@@ -43,23 +45,28 @@ The current-user selection is:
     %APPDATA%\MiniServer\Config\start-sites.txt
 
 Private configuration may reduce the Shared selection. It cannot enable an
-application absent from Shared and cannot reorder Shared applications. When
-the Private file is missing, Mini Server safely initializes it from the current
-valid Shared entries and opens only the built-in root welcome page. An existing
-empty Private file selects none.
+application absent from Shared and cannot reorder Shared applications. Missing
+Private opens root setup without creating the file. A readable nonempty
+effective selection opens its applications in Shared order; an empty, stale,
+unreadable, or otherwise ineffective selection opens root recovery instead.
 
 Both files use UTF-8 text with one first-level application name per line. Empty
 lines and lines beginning with # after surrounding whitespace are ignored.
-Missing or empty Shared configuration opens no application automatically.
-Invalid entries and entries for missing applications are ignored.
+Missing or unreadable Shared and readable Shared with no valid applications
+open root recovery and make saving unavailable. Invalid entries and entries for
+missing applications are ignored.
 
 Changes to either file apply the next time start.bat is invoked. The active
 server does not need to be restarted. Start-site selection controls automatic
 browser opening only; it is not application access control.
 
-Visiting http://127.0.0.1:<active-port>/ later opens the same fresh selection
-page. It initially selects all current valid Shared entries; saving replaces the
-complete personal selection rather than displaying or merging the old one.
+Double-click configure.bat to start or reuse the same server and open only the
+selection page. Configure does not modify Private by itself. The page proposes
+all Shared choices only when Private is missing; otherwise it reflects the
+current readable selection or shows recovery without guessing unreadable state.
+Saving replaces the complete personal selection, navigates the current root tab
+to the first selected application, and opens additional applications through
+the Windows default browser.
 
 Stopping Mini Server
 --------------------

@@ -171,6 +171,7 @@ class MiniServerApplicationTest {
         createApplication("first");
         createApplication("second");
         writeLines(sharedConfiguration, "first", "second");
+        writeLines(privateConfiguration, "first", "second");
         CountingServerFactory serverFactory = new CountingServerFactory();
         RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
         RecordingOutput output = new RecordingOutput();
@@ -193,7 +194,7 @@ class MiniServerApplicationTest {
         assertEquals(first.getPort(), repeated.getPort());
         assertEquals(1, serverFactory.creationCount.get());
         assertEquals(
-                Arrays.asList(origin + "/", origin + "/second/"),
+                Arrays.asList(origin + "/first/", origin + "/second/", origin + "/second/"),
                 browserLauncher.urls);
     }
 
@@ -288,7 +289,7 @@ class MiniServerApplicationTest {
     }
 
     @Test
-    void providerFailureAfterStartupOpensNothingAndLeavesServerStateValid() throws Exception {
+    void providerFailureAfterStartupOpensRecoveryRootAndLeavesServerStateValid() throws Exception {
         Path runtimeDirectory = temporaryDirectory.resolve("provider-failure");
         CountingServerFactory serverFactory = new CountingServerFactory();
         RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
@@ -309,10 +310,70 @@ class MiniServerApplicationTest {
         assertEquals(
                 result.getPort(),
                 new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
-        assertTrue(browserLauncher.urls.isEmpty());
+        assertEquals(Collections.singletonList(
+                "http://127.0.0.1:" + result.getPort() + "/"), browserLauncher.urls);
         assertTrue(output.errorText().contains(
                 "Start-site configuration could not be read."));
         assertListenerReachable(result.getPort());
+    }
+
+    @Test
+    void configureNewAndExistingInstanceOpenOnlyRootWithoutEvaluatingProvider()
+            throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("configure");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
+        RecordingOutput output = new RecordingOutput();
+        AtomicInteger providerCalls = new AtomicInteger();
+        MiniServerApplication application = new MiniServerApplication(
+                startup(runtimeDirectory, serverFactory),
+                browserLauncher,
+                () -> {
+                    providerCalls.incrementAndGet();
+                    throw new AssertionError("Configure must not evaluate normal start sites.");
+                },
+                output.standard,
+                output.error);
+
+        StartupResult first = own(application.configure());
+        StartupResult repeated = own(application.configure());
+
+        assertTrue(first.isNewInstance());
+        assertTrue(repeated.isExistingInstance());
+        assertEquals(first.getPort(), repeated.getPort());
+        assertEquals(1, serverFactory.creationCount.get());
+        assertEquals(0, providerCalls.get());
+        String root = "http://127.0.0.1:" + first.getPort() + "/";
+        assertEquals(Arrays.asList(root, root), browserLauncher.urls);
+        assertTrue(first.getRunningServer().isRunning());
+        assertListenerReachable(first.getPort());
+    }
+
+    @Test
+    void configureBrowserFailurePreservesNewServerAndRuntimeState() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("configure-browser-failure");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingOutput output = new RecordingOutput();
+        AtomicInteger providerCalls = new AtomicInteger();
+
+        StartupResult result = own(new MiniServerApplication(
+                startup(runtimeDirectory, serverFactory),
+                new RecordingBrowserLauncher(true),
+                () -> {
+                    providerCalls.incrementAndGet();
+                    return StartSitePlan.applications(Collections.singletonList("example"));
+                },
+                output.standard,
+                output.error).configure());
+
+        assertTrue(result.isNewInstance());
+        assertEquals(0, providerCalls.get());
+        assertEquals(result.getPort(),
+                new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
+        assertTrue(result.getRunningServer().isRunning());
+        assertListenerReachable(result.getPort());
+        assertTrue(output.errorText().contains(
+                "http://127.0.0.1:" + result.getPort() + "/"));
     }
 
     @Test

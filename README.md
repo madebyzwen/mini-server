@@ -50,10 +50,9 @@ Mini Server is a lightweight, portable Windows web server for local or trusted i
 The server listens only on `127.0.0.1` and lets the operating system select an available TCP port. It is designed for local use and is not intended for exposure to the public internet.
 
 The latest published release is v1.0.0. The v1.1 development branch is not
-release-ready: manual Windows verification found interaction defects, and the
-approved D-030 start-site UX still requires an implementation correction and
-repeat verification. The brief v1.1 descriptions below state the approved
-target, not currently verified release behavior.
+release-ready. The approved D-030 start-site UX is implemented and passes local
+automated verification, but repeat verification of the packaged build on
+Windows is still required.
 
 
 ## Features
@@ -65,6 +64,7 @@ target, not currently verified release behavior.
 - Dynamic, operating-system-selected port
 - One active instance per local user/computer context
 - Detached startup through `start.bat` and `javaw.exe`
+- Dedicated reconfiguration through `configure.bat`
 - Graceful shutdown through `stop.bat`
 - Automatic launch through the Windows default browser
 - Built-in first-run welcome and start-site selection page
@@ -90,7 +90,8 @@ target, not currently verified release behavior.
 6. On the first v1.1 start without a personal selection, the Windows default browser opens `Welcome to Mini Server`.
 7. Choose at least one application and use `Save and open`; nothing is saved merely by displaying or closing the page.
 8. Closing the browser does not stop Mini Server.
-9. Double-click `stop.bat` when Mini Server is no longer required.
+9. Double-click `configure.bat` whenever the personal selection should be edited.
+10. Double-click `stop.bat` when Mini Server is no longer required.
 
 `start.bat` launches the existing `MiniServer` entry point through `javaw.exe`; the batch window is not tied to the server lifetime. Mini Server continues running after that window disappears. Starting it again reuses the active local server and its dynamic port instead of creating a second HTTP server.
 
@@ -105,9 +106,9 @@ page without creating the file. The page proposes all current valid Shared
 applications, and successful `Save and open` is the explicit commit point. A
 saved selection must contain at least one application, is normalized by the
 server, and opens immediately. Existing selections are shown when readable;
-zero or unreadable effective selections open the page as recovery. A supported
-`configure.bat` workflow for later reconfiguration is part of the pending
-post-D-030 implementation.
+zero or unreadable effective selections open the page as recovery.
+`configure.bat` starts or reuses the one active server and opens only this root
+page without evaluating or modifying the saved selection.
 
 Start-site selection controls automatic browser opening only. It is not access control, and valid applications remain directly reachable at their normal URLs.
 
@@ -164,6 +165,7 @@ mini-server-<version>\
 ├── lib\
 ├── miniweb-template.zip
 ├── start.bat
+├── configure.bat
 ├── stop.bat
 ├── README.txt
 ├── config\
@@ -232,10 +234,9 @@ Mini Server ist ein leichtgewichtiger, portabler Windows-Webserver für lokale o
 Der Server lauscht ausschließlich auf `127.0.0.1`. Einen freien TCP-Port wählt das Betriebssystem automatisch aus. Mini Server ist für den lokalen Einsatz vorgesehen und nicht für den öffentlichen Internetbetrieb bestimmt.
 
 Das zuletzt veröffentlichte Release ist v1.0.0. Der v1.1-Entwicklungsstand ist
-noch nicht releasebereit: Bei der manuellen Windows-Prüfung wurden
-Interaktionsfehler gefunden. Die freigegebene D-030-Startauswahl muss noch
-korrigiert implementiert und erneut geprüft werden. Die kurzen v1.1-Angaben
-unten beschreiben das Ziel, nicht bereits verifiziertes Releaseverhalten.
+noch nicht releasebereit. Die freigegebene D-030-Startauswahl ist implementiert
+und lokal automatisiert geprüft; die erneute Prüfung der paketierten Version
+unter Windows steht noch aus.
 
 
 ## Funktionen
@@ -247,6 +248,7 @@ unten beschreiben das Ziel, nicht bereits verifiziertes Releaseverhalten.
 - Dynamischer, vom Betriebssystem ausgewählter Port
 - Eine aktive Instanz pro lokalem Benutzer-/Computer-Kontext
 - Abgekoppelter Start über `start.bat` und `javaw.exe`
+- Gezielte Neukonfiguration über `configure.bat`
 - Kontrolliertes Beenden über `stop.bat`
 - Automatisches Öffnen über den Windows-Standardbrowser
 - Integrierte Willkommens- und Startauswahlseite für den ersten Start
@@ -272,7 +274,8 @@ unten beschreiben das Ziel, nicht bereits verifiziertes Releaseverhalten.
 6. Beim ersten v1.1-Start ohne persönliche Auswahl öffnet der Windows-Standardbrowser `Welcome to Mini Server`.
 7. Mindestens eine Anwendung auswählen und `Save and open` verwenden; allein durch Anzeigen oder Schließen der Seite wird nichts gespeichert.
 8. Der Browser kann geschlossen werden, ohne Mini Server zu beenden.
-9. `stop.bat` doppelklicken, um Mini Server kontrolliert zu beenden.
+9. Zum Ändern der persönlichen Auswahl `configure.bat` doppelklicken.
+10. `stop.bat` doppelklicken, um Mini Server kontrolliert zu beenden.
 
 `start.bat` startet den vorhandenen `MiniServer`-Einstiegspunkt über `javaw.exe`. Das Batchfenster ist nicht an die Laufzeit des Servers gekoppelt; Mini Server läuft weiter, nachdem das Fenster verschwunden ist. Ein erneuter Start verwendet die bereits aktive lokale Instanz und deren dynamischen Port, anstatt einen zweiten HTTP-Server zu starten.
 
@@ -288,9 +291,9 @@ schlägt alle aktuell gültigen gemeinsamen Anwendungen vor; erst ein
 erfolgreiches `Save and open` speichert die Auswahl. Sie muss mindestens eine
 Anwendung enthalten, wird vom Server normalisiert und sofort geöffnet.
 Vorhandene lesbare Auswahlen werden angezeigt; eine leere, wirkungslos
-gewordene oder unlesbare Auswahl führt zur Wiederherstellungsseite. Ein
-unterstützter `configure.bat`-Ablauf für spätere Änderungen gehört zur noch
-ausstehenden D-030-Implementierung.
+gewordene oder unlesbare Auswahl führt zur Wiederherstellungsseite.
+`configure.bat` startet oder verwendet den einen aktiven Server und öffnet nur
+diese Startseite, ohne die gespeicherte Auswahl auszuwerten oder zu verändern.
 
 Die Startauswahl steuert nur das automatische Öffnen im Browser. Sie ist keine Zugriffskontrolle; gültige Anwendungen bleiben über ihre normalen URLs direkt erreichbar.
 
@@ -347,6 +350,7 @@ mini-server-<version>\
 ├── lib\
 ├── miniweb-template.zip
 ├── start.bat
+├── configure.bat
 ├── stop.bat
 ├── README.txt
 ├── config\

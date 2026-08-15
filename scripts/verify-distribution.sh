@@ -55,6 +55,7 @@ required_entries=(
     "$distribution_root/www/example/index.html"
     "$distribution_root/miniweb-template.zip"
     "$distribution_root/start.bat"
+    "$distribution_root/configure.bat"
     "$distribution_root/stop.bat"
     "$distribution_root/README.txt"
 )
@@ -100,10 +101,11 @@ if (( start_site_file_count != 1 )); then
 fi
 
 start_launcher=$(unzip -p "$archive" "$distribution_root/start.bat")
+configure_launcher=$(unzip -p "$archive" "$distribution_root/configure.bat")
 stop_launcher=$(unzip -p "$archive" "$distribution_root/stop.bat")
 
 if grep -Eiq '(^|[[:space:]])(pushd|popd)([[:space:]]|$)' \
-        <<< "$start_launcher$stop_launcher"; then
+        <<< "$start_launcher$configure_launcher$stop_launcher"; then
     echo "Distribution BAT launchers must not depend on pushd or popd." >&2
     exit 1
 fi
@@ -115,6 +117,16 @@ if ! grep -Fq \
 fi
 if grep -Eiq '(^|[[:space:]])java(.exe)?[[:space:]]+-cp' <<< "$start_launcher"; then
     echo "start.bat must not run the server synchronously through java.exe." >&2
+    exit 1
+fi
+if ! grep -Fq \
+        'start "" javaw -cp "%~dp0mini-server.jar;%~dp0lib\*" io.github.madebyzwen.miniserver.MiniServer configure' \
+        <<< "$configure_launcher"; then
+    echo "configure.bat must launch Mini Server configure through javaw with absolute batch-relative paths." >&2
+    exit 1
+fi
+if grep -Eiq '(^|[[:space:]])java(.exe)?[[:space:]]+-cp' <<< "$configure_launcher"; then
+    echo "configure.bat must not run the server synchronously through java.exe." >&2
     exit 1
 fi
 if ! grep -Fq \

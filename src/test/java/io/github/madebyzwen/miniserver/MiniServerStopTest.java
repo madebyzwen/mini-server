@@ -60,6 +60,20 @@ class MiniServerStopTest {
     }
 
     @Test
+    void commandDispatchSupportsNormalConfigureAndStopWithClearUsage() {
+        assertEquals(MiniServer.Command.START, MiniServer.commandFor(new String[0]));
+        assertEquals(MiniServer.Command.CONFIGURE,
+                MiniServer.commandFor(new String[] {"configure"}));
+        assertEquals(MiniServer.Command.STOP,
+                MiniServer.commandFor(new String[] {"stop"}));
+        assertEquals(MiniServer.Command.INVALID,
+                MiniServer.commandFor(new String[] {"unknown"}));
+        assertEquals(MiniServer.Command.INVALID,
+                MiniServer.commandFor(new String[] {"configure", "stop"}));
+        assertEquals("Usage: MiniServer [configure|stop]", MiniServer.USAGE);
+    }
+
+    @Test
     void stopCommandUsesActiveListenerAndAllowsFreshDynamicStartup() throws Exception {
         Path runtimeDirectory = temporaryDirectory.resolve("stop-and-restart");
         MiniServerStartup startup = startup(runtimeDirectory);

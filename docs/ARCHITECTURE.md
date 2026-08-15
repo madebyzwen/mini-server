@@ -276,12 +276,21 @@ restores Shared order, and requires at least one normalized application. A
 nonempty request that has become wholly stale is rejected distinctly from
 malformed/empty user input. Every failure preserves existing Private content.
 
+The handler uses `400 Bad Request` for malformed structure or an explicitly
+empty array, `409 Conflict` when a nonempty request normalizes to no selectable
+application, `503 Service Unavailable` when Shared cannot be read or validated,
+and `500 Internal Server Error` for an unexpected write or handler failure.
+
 After normalization, the endpoint safely replaces or creates the complete
 canonical Private UTF-8 file. Only after the write succeeds does it apply the
-selection. Its narrowly scoped JSON success body contains the server-normalized
-applications and server-generated local targets in Shared order. The root UI
-uses only this result: the first target replaces the current root tab and later
-targets are opened in order. Raw checkbox values never become post-save URLs.
+selection. It reads the actual active port from the `HttpExchange` local
+address and returns `200 OK` with `application/json; charset=utf-8` and a narrow
+`sites`/`targets` body. Both arrays use Shared order, and every target is a
+server-generated `127.0.0.1` URL. The root UI uses only this result: the first
+target replaces the current root tab with `window.location.replace`. The Java
+handler sends only targets at index 1 and later through its injected
+`BrowserLauncher`, attempting each independently. Raw checkbox values never
+become post-save URLs, and no asynchronous `window.open` popup path is used.
 
 The in-flight primary action is disabled and only one logical submission is
 allowed, preventing double-save and duplicate-opening behavior. Failure keeps
@@ -571,6 +580,10 @@ effective URLs and exits naturally.
 `configure.bat` follows the same portable detached Windows principles and
 invokes a dedicated configure mode. It starts or reuses the same server and
 runtime-state model, but opens only the built-in root page.
+
+Production constructs one `BrowserLauncher` abstraction and supplies it both
+to application startup and, through `MiniServerStartup`, to the internal save
+handler. Tests inject recorders instead of opening a GUI browser.
 
 ### First Local Start
 

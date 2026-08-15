@@ -84,51 +84,32 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
 
     @Override
     public StartSitePlan planStartSites() throws IOException {
-        final Path privateConfiguration;
+        final PrivateSelection privateSelection;
         try {
-            privateConfiguration = resolvePrivateConfiguration();
+            privateSelection = loadPrivateSelection();
         } catch (IOException | RuntimeException exception) {
             return StartSitePlan.root(
-                    "The current-user start-site selection location is unavailable.");
-        }
-        final Optional<List<String>> privateLines;
-        try {
-            privateLines = fileReader.read(privateConfiguration);
-        } catch (IOException exception) {
-            return StartSitePlan.none("The current-user start-site selection could not be read.");
+                    "The current-user start-site selection could not be read.");
         }
 
         final SharedStartSites shared;
         try {
             shared = loadSharedStartSites();
         } catch (IOException exception) {
-            return privateLines.isPresent()
-                    ? StartSitePlan.none("Shared start-site approval is unavailable.")
-                    : StartSitePlan.root("Shared start-site approval is unavailable.");
+            return StartSitePlan.root("Shared start-site approval is unavailable.");
         }
         if (!shared.isAvailable()) {
-            return privateLines.isPresent()
-                    ? StartSitePlan.none("Shared start-site approval is unavailable.")
-                    : StartSitePlan.root("Shared start-site approval is unavailable.");
+            return StartSitePlan.root("Shared start-site approval is unavailable.");
         }
 
-        if (!privateLines.isPresent()) {
-            try {
-                if (initializePrivateSelection(privateConfiguration, shared.getSites())) {
-                    return StartSitePlan.root(null);
-                }
-                Optional<List<String>> concurrentSelection = fileReader.read(privateConfiguration);
-                if (!concurrentSelection.isPresent()) {
-                    return StartSitePlan.root(
-                            "The current-user start-site selection could not be initialized.");
-                }
-                return planApplications(shared.getSites(), concurrentSelection.get());
-            } catch (IOException exception) {
-                return StartSitePlan.root(
-                        "The current-user start-site selection could not be initialized.");
-            }
+        if (privateSelection.getState() == PrivateSelectionState.MISSING) {
+            return StartSitePlan.root(null);
         }
-        return planApplications(shared.getSites(), privateLines.get());
+        List<String> effective = effectiveSites(
+                shared.getSites(), privateSelection.getLines());
+        return effective.isEmpty()
+                ? StartSitePlan.root(null)
+                : StartSitePlan.applications(effective);
     }
 
     /** Compatibility view retained for focused parser and filtering tests. */
@@ -137,12 +118,23 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
         if (!shared.isAvailable()) {
             return Collections.emptyList();
         }
-        Optional<List<String>> privateLines = fileReader.read(resolvePrivateConfiguration());
-        if (!privateLines.isPresent()) {
+        PrivateSelection privateSelection = loadPrivateSelection();
+        if (privateSelection.getState() == PrivateSelectionState.MISSING) {
             return shared.getSites();
         }
-        StartSitePlan plan = planApplications(shared.getSites(), privateLines.get());
-        return plan.getSites();
+        return effectiveSites(shared.getSites(), privateSelection.getLines());
+    }
+
+    RootPageState loadRootPageState() {
+        final PrivateSelection privateSelection;
+        try {
+            privateSelection = loadPrivateSelection();
+        } catch (IOException | RuntimeException exception) {
+            return rootPageState(
+                    loadSharedStartSitesForPage(),
+                    PrivateSelection.unreadable());
+        }
+        return rootPageState(loadSharedStartSitesForPage(), privateSelection);
     }
 
     SharedStartSites loadSharedStartSites() throws IOException {
@@ -157,6 +149,9 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
     List<String> saveSelection(List<String> requestedSites) throws IOException {
         if (requestedSites == null) {
             throw new NullPointerException("The requested sites must not be null.");
+        }
+        if (requestedSites.isEmpty()) {
+            throw new EmptySelectionException();
         }
         final SharedStartSites shared;
         try {
@@ -179,11 +174,45 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
                 normalized.add(approved);
             }
         }
+        if (normalized.isEmpty()) {
+            throw new SelectionConflictException();
+        }
         replacePrivateSelection(resolvePrivateConfiguration(), normalized);
         return Collections.unmodifiableList(normalized);
     }
 
-    private static StartSitePlan planApplications(List<String> sharedSites, List<String> privateLines) {
+    private SharedStartSites loadSharedStartSitesForPage() {
+        try {
+            return loadSharedStartSites();
+        } catch (IOException | RuntimeException exception) {
+            return SharedStartSites.unavailable();
+        }
+    }
+
+    private static RootPageState rootPageState(
+            SharedStartSites shared,
+            PrivateSelection privateSelection) {
+        List<String> selected = Collections.emptyList();
+        if (shared.isAvailable()) {
+            if (privateSelection.getState() == PrivateSelectionState.MISSING) {
+                selected = shared.getSites();
+            } else if (privateSelection.getState() == PrivateSelectionState.READABLE) {
+                selected = effectiveSites(shared.getSites(), privateSelection.getLines());
+            }
+        }
+        return new RootPageState(shared, privateSelection.getState(), selected);
+    }
+
+    private PrivateSelection loadPrivateSelection() throws IOException {
+        Optional<List<String>> lines = fileReader.read(resolvePrivateConfiguration());
+        return lines.isPresent()
+                ? PrivateSelection.readable(lines.get())
+                : PrivateSelection.missing();
+    }
+
+    private static List<String> effectiveSites(
+            List<String> sharedSites,
+            List<String> privateLines) {
         Set<String> privateSelection = new HashSet<String>(parse(privateLines));
         List<String> effectiveSites = new ArrayList<String>();
         for (String sharedSite : sharedSites) {
@@ -191,23 +220,7 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
                 effectiveSites.add(sharedSite);
             }
         }
-        return effectiveSites.isEmpty()
-                ? StartSitePlan.none(null)
-                : StartSitePlan.applications(effectiveSites);
-    }
-
-    private boolean initializePrivateSelection(final Path file, final List<String> sites)
-            throws IOException {
-        return withPrivateConfigurationLock(file, new LockedConfigurationOperation<Boolean>() {
-            @Override
-            public Boolean run() throws IOException {
-                if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
-                    return Boolean.FALSE;
-                }
-                writeConfigurationAtomically(file, sites, false);
-                return Boolean.TRUE;
-            }
-        });
+        return Collections.unmodifiableList(effectiveSites);
     }
 
     private void replacePrivateSelection(final Path file, final List<String> sites)
@@ -215,7 +228,7 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
         withPrivateConfigurationLock(file, new LockedConfigurationOperation<Void>() {
             @Override
             public Void run() throws IOException {
-                writeConfigurationAtomically(file, sites, true);
+                writeConfigurationAtomically(file, sites);
                 return null;
             }
         });
@@ -249,8 +262,7 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
 
     private static void writeConfigurationAtomically(
             Path file,
-            List<String> sites,
-            boolean replace) throws IOException {
+            List<String> sites) throws IOException {
         Path temporary = null;
         boolean moved = false;
         try {
@@ -264,12 +276,8 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
                     writer.newLine();
                 }
             }
-            if (replace) {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } else {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
-            }
+            Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
             moved = true;
         } finally {
             if (!moved && temporary != null) {
@@ -449,6 +457,72 @@ final class ConfiguredStartSiteProvider implements StartSiteProvider {
 
         boolean isAvailable() { return available; }
         List<String> getSites() { return sites; }
+    }
+
+    enum PrivateSelectionState { MISSING, READABLE, UNREADABLE }
+
+    static final class RootPageState {
+        private final SharedStartSites shared;
+        private final PrivateSelectionState privateState;
+        private final List<String> selectedSites;
+
+        private RootPageState(
+                SharedStartSites shared,
+                PrivateSelectionState privateState,
+                List<String> selectedSites) {
+            this.shared = shared;
+            this.privateState = privateState;
+            this.selectedSites = Collections.unmodifiableList(
+                    new ArrayList<String>(selectedSites));
+        }
+
+        SharedStartSites getShared() { return shared; }
+        PrivateSelectionState getPrivateState() { return privateState; }
+        List<String> getSelectedSites() { return selectedSites; }
+        boolean isSavingAvailable() {
+            return shared.isAvailable() && !shared.getSites().isEmpty();
+        }
+    }
+
+    private static final class PrivateSelection {
+        private final PrivateSelectionState state;
+        private final List<String> lines;
+
+        private PrivateSelection(PrivateSelectionState state, List<String> lines) {
+            this.state = state;
+            this.lines = Collections.unmodifiableList(new ArrayList<String>(lines));
+        }
+
+        static PrivateSelection missing() {
+            return new PrivateSelection(
+                    PrivateSelectionState.MISSING,
+                    Collections.<String>emptyList());
+        }
+
+        static PrivateSelection readable(List<String> lines) {
+            return new PrivateSelection(PrivateSelectionState.READABLE, lines);
+        }
+
+        static PrivateSelection unreadable() {
+            return new PrivateSelection(
+                    PrivateSelectionState.UNREADABLE,
+                    Collections.<String>emptyList());
+        }
+
+        PrivateSelectionState getState() { return state; }
+        List<String> getLines() { return lines; }
+    }
+
+    static final class EmptySelectionException extends IOException {
+        EmptySelectionException() {
+            super("At least one application must be selected.");
+        }
+    }
+
+    static final class SelectionConflictException extends IOException {
+        SelectionConflictException() {
+            super("The requested selection is no longer available.");
+        }
     }
 
     static final class SharedConfigurationUnavailableException extends IOException {

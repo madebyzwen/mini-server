@@ -43,6 +43,11 @@ public final class MiniServerStartup {
             return HttpServer.create(address, 0);
         }
     };
+    private static final BrowserLauncher NO_BROWSER_LAUNCHER = new BrowserLauncher() {
+        @Override
+        public void open(String url) {
+        }
+    };
 
     private final Path injectedRuntimeDirectory;
     private final Path injectedWebRoot;
@@ -50,24 +55,33 @@ public final class MiniServerStartup {
     private final ServerFactory serverFactory;
     private final StartupObserver observer;
     private final ConfiguredStartSiteProvider startSites;
+    private final BrowserLauncher browserLauncher;
 
     public MiniServerStartup() {
         this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER,
-                new ConfiguredStartSiteProvider());
+                new ConfiguredStartSiteProvider(), new WindowsDefaultBrowserLauncher());
     }
 
     MiniServerStartup(ConfiguredStartSiteProvider startSites) {
-        this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER, startSites);
+        this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER, startSites,
+                NO_BROWSER_LAUNCHER);
+    }
+
+    MiniServerStartup(
+            ConfiguredStartSiteProvider startSites,
+            BrowserLauncher browserLauncher) {
+        this(null, null, PRODUCTION_SETTINGS, DEFAULT_SERVER_FACTORY, NO_OBSERVER, startSites,
+                browserLauncher);
     }
 
     MiniServerStartup(Path runtimeDirectory, Settings settings) {
         this(runtimeDirectory, null, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER,
-                new ConfiguredStartSiteProvider());
+                new ConfiguredStartSiteProvider(), NO_BROWSER_LAUNCHER);
     }
 
     MiniServerStartup(Path runtimeDirectory, Path webRoot, Settings settings) {
         this(runtimeDirectory, webRoot, settings, DEFAULT_SERVER_FACTORY, NO_OBSERVER,
-                new ConfiguredStartSiteProvider());
+                new ConfiguredStartSiteProvider(), NO_BROWSER_LAUNCHER);
     }
 
     MiniServerStartup(
@@ -77,7 +91,7 @@ public final class MiniServerStartup {
             ServerFactory serverFactory,
             StartupObserver observer) {
         this(runtimeDirectory, webRoot, settings, serverFactory, observer,
-                new ConfiguredStartSiteProvider());
+                new ConfiguredStartSiteProvider(), NO_BROWSER_LAUNCHER);
     }
 
     MiniServerStartup(
@@ -87,12 +101,28 @@ public final class MiniServerStartup {
             ServerFactory serverFactory,
             StartupObserver observer,
             ConfiguredStartSiteProvider startSites) {
+        this(runtimeDirectory, webRoot, settings, serverFactory, observer, startSites,
+                NO_BROWSER_LAUNCHER);
+    }
+
+    MiniServerStartup(
+            Path runtimeDirectory,
+            Path webRoot,
+            Settings settings,
+            ServerFactory serverFactory,
+            StartupObserver observer,
+            ConfiguredStartSiteProvider startSites,
+            BrowserLauncher browserLauncher) {
+        if (startSites == null || browserLauncher == null) {
+            throw new NullPointerException("Start-site dependencies must not be null.");
+        }
         this.injectedRuntimeDirectory = runtimeDirectory;
         this.injectedWebRoot = webRoot;
         this.settings = settings;
         this.serverFactory = serverFactory;
         this.observer = observer;
         this.startSites = startSites;
+        this.browserLauncher = browserLauncher;
     }
 
     public StartupResult start() throws StartupException {
@@ -211,7 +241,7 @@ public final class MiniServerStartup {
                     apiHandler,
                     staticFileHandler,
                     new WelcomePageHandler(startSites),
-                    new StartSiteSelectionHandler(startSites));
+                    new StartSiteSelectionHandler(startSites, browserLauncher, System.err));
         } catch (IOException exception) {
             throw new StartupException("The Mini Server web root cannot be accessed.", exception);
         }

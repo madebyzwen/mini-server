@@ -74,7 +74,7 @@ If the Maven command itself is already sufficiently simple, an additional wrappe
 
 Mini Server v1.0 targets Windows for the normal user-facing runtime experience.
 
-A Windows launcher or equivalent startup mechanism may be provided as part of the distribution.
+The distribution provides `start.bat`, `configure.bat`, and `stop.bat`.
 
 Its responsibilities may include starting the Java application in the intended way and supporting the normal desktop-launch experience.
 
@@ -87,8 +87,15 @@ The Mini Server Java implementation remains responsible for:
 - Repeated-start detection
 - Selecting the active server port
 - Windows default-browser launch behavior defined by the active requirements
+- Root-only configure behavior using the same single-instance server
 
 A launcher script must not implement a separate competing instance-management or port-selection mechanism.
+
+`start.bat` and `configure.bat` use detached `javaw.exe` invocation with
+batch-relative absolute paths. `configure.bat` passes the explicit `configure`
+command. `stop.bat` retains its synchronous authenticated-stop command. The
+distribution verifier requires all three launchers and rejects packaged Private
+configuration.
 
 In particular, it must not:
 

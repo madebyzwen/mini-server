@@ -24,18 +24,22 @@ public final class MiniServer {
     private static final int STOP_READ_TIMEOUT_MILLIS = 2000;
     private static final long STOP_WAIT_TIMEOUT_MILLIS = 5000L;
     private static final long STOP_RETRY_MILLIS = 25L;
+    static final String USAGE = "Usage: MiniServer [configure|stop]";
 
     private MiniServer() {
     }
 
     public static void main(String[] args) {
         int exitCode;
-        if (args.length == 0) {
-            exitCode = start();
-        } else if (args.length == 1 && "stop".equals(args[0])) {
+        Command command = commandFor(args);
+        if (command == Command.START) {
+            exitCode = start(false);
+        } else if (command == Command.CONFIGURE) {
+            exitCode = start(true);
+        } else if (command == Command.STOP) {
             exitCode = stop();
         } else {
-            System.err.println("Usage: MiniServer [stop]");
+            System.err.println(USAGE);
             exitCode = EXIT_FAILURE;
         }
 
@@ -44,15 +48,33 @@ public final class MiniServer {
         }
     }
 
-    private static int start() {
+    static Command commandFor(String[] args) {
+        if (args == null) {
+            throw new NullPointerException("Arguments must not be null.");
+        }
+        if (args.length == 0) {
+            return Command.START;
+        }
+        if (args.length == 1 && "configure".equals(args[0])) {
+            return Command.CONFIGURE;
+        }
+        if (args.length == 1 && "stop".equals(args[0])) {
+            return Command.STOP;
+        }
+        return Command.INVALID;
+    }
+
+    private static int start(boolean configure) {
         try {
             ConfiguredStartSiteProvider startSites = new ConfiguredStartSiteProvider();
-            StartupResult result = new MiniServerApplication(
-                    new MiniServerStartup(startSites),
-                    new WindowsDefaultBrowserLauncher(),
+            BrowserLauncher browserLauncher = new WindowsDefaultBrowserLauncher();
+            MiniServerApplication application = new MiniServerApplication(
+                    new MiniServerStartup(startSites, browserLauncher),
+                    browserLauncher,
                     startSites,
                     System.out,
-                    System.err).start();
+                    System.err);
+            StartupResult result = configure ? application.configure() : application.start();
             if (result.isExistingInstance()) {
                 return EXIT_SUCCESS;
             }
@@ -208,5 +230,12 @@ public final class MiniServer {
 
     static String startupFailureMessage(StartupException exception) {
         return "Mini Server could not start: " + ConsoleDiagnostics.failureSummary(exception);
+    }
+
+    enum Command {
+        START,
+        CONFIGURE,
+        STOP,
+        INVALID
     }
 }

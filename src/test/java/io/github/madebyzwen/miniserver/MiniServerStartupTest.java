@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
@@ -24,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -150,6 +152,48 @@ class MiniServerStartupTest {
             assertEquals(200, connection.getResponseCode());
             assertEquals("application/json; charset=utf-8", connection.getContentType());
             assertEquals("{}", readText(connection.getInputStream()));
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    @Test
+    void startupWiresInjectedBrowserLauncherIntoStartSiteSaveHandler() throws Exception {
+        Files.createDirectories(testWebRoot.resolve("first"));
+        Files.createDirectories(testWebRoot.resolve("second"));
+        Path shared = temporaryDirectory.resolve("config/start-sites.txt");
+        Path privateSelection = temporaryDirectory.resolve("profile/Config/start-sites.txt");
+        Files.createDirectories(shared.getParent());
+        Files.write(shared, Arrays.asList("first", "second"), StandardCharsets.UTF_8);
+        List<String> launched = new ArrayList<String>();
+        BrowserLauncher launcher = launched::add;
+        StartupResult result = own(new MiniServerStartup(
+                temporaryDirectory.resolve("handler-browser-wiring"),
+                testWebRoot,
+                NORMAL_SETTINGS,
+                new RecordingServerFactory(),
+                NO_OBSERVER,
+                new ConfiguredStartSiteProvider(testWebRoot, shared, privateSelection),
+                launcher).start());
+
+        URL endpoint = new URL("http://127.0.0.1:" + result.getPort()
+                + StartSiteSelectionHandler.PATH);
+        HttpURLConnection connection = (HttpURLConnection) endpoint.openConnection();
+        byte[] body = "{\"sites\":[\"first\",\"second\"]}"
+                .getBytes(StandardCharsets.UTF_8);
+        connection.setRequestMethod("POST");
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setDoOutput(true);
+        connection.setFixedLengthStreamingMode(body.length);
+        try (OutputStream output = connection.getOutputStream()) {
+            output.write(body);
+        }
+        try {
+            assertEquals(200, connection.getResponseCode());
+            assertEquals(Collections.singletonList(
+                    "http://127.0.0.1:" + result.getPort() + "/second/"), launched);
+            assertEquals(Arrays.asList("first", "second"),
+                    Files.readAllLines(privateSelection, StandardCharsets.UTF_8));
         } finally {
             connection.disconnect();
         }

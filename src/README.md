@@ -179,12 +179,19 @@ Current-user replacement selection is stored independently at:
 
 The start-site service rereads both levels after each successful first or
 repeated startup. It validates Shared entries against current first-level
-application directories below `www/`, then applies an existing Private file
-only as an inclusion set while preserving Shared order. When Private is
-missing, it is safely initialized from normalized Shared and startup opens only
-the built-in root selection page. `GET /` presents an all-checked Shared-only
-replacement workflow, and `POST /__miniserver/start-sites` atomically replaces
-the complete Private selection after current Shared revalidation.
+application directories below `www/`, then applies an existing readable Private
+file only as an inclusion set while preserving Shared order. Missing Private
+opens the built-in root setup page without creating the file; all valid Shared
+choices are checked only as an unsaved proposal. Empty, stale, unreadable, or
+otherwise ineffective selection state opens root recovery. `GET /` reflects
+current Shared and Private state, and `POST /__miniserver/start-sites` requires
+at least one normalized application before atomically replacing Private and
+returning server-generated actual-port targets. The root tab opens the first
+target and the server submits additional targets through `BrowserLauncher`.
+
+`MiniServer configure`, distributed as `configure.bat`, starts or reuses the
+same server and opens only the root page without evaluating or modifying the
+normal selection.
 
 Private persistence migrates byte-for-byte from the released v1.0 location
 `%APPDATA%\MiniServerData\<site>\data\data.json` before normal Private use when
@@ -255,5 +262,6 @@ If implementation work reveals a missing or contradictory requirement, document 
 
 The Maven source tree implements the released v1.0 runtime and the v1.1
 default-browser, unified current-user storage, migration, and interactive
-start-site behavior. Required Windows manual verification and final v1.1 scope
+post-D-030 start-site behavior. Local automated/package verification is
+complete; required Windows manual verification and final v1.1 scope
 verification remain planned under T-018 and T-017 respectively.

@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Shared installation start-site approval with optional current-user Private filtering, preserving Shared ordering and applying changes on each start action.
 - An English, self-contained `Welcome to Mini Server` page for first-run selection and later complete replacement of the personal start-site selection.
+- A portable `configure.bat` action that starts or reuses Mini Server and opens only the selection page.
 - Safe byte-preserving migration of released v1.0 Private persistence when the v1.1 canonical file is absent.
 
 ### Changed
@@ -18,8 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Current-user Mini Server storage now uses `%APPDATA%\MiniServer\Config` for configuration and `%APPDATA%\MiniServer\Data\<site>\data.json` for Private application persistence.
 - The approved v1.1 start-site UX now makes successful `Save and open` the
   explicit first-run commit point, requires a nonempty server-normalized
-  selection, adds visible recovery and a supported configure action, and still
-  requires implementation correction and repeat Windows verification.
+  selection, adds visible recovery and immediate application opening, and now
+  requires repeat packaged Windows verification.
 
 ## [1.0.0] - 2026-08-15
 
