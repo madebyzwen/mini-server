@@ -27,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -123,14 +124,50 @@ class JsonPersistenceStoreTest {
     }
 
     @Test
+    void indeterminateLegacyInspectionFailsPrivateWriteWithoutCreatingCanonicalData()
+            throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "write");
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        String legacyBytes = "{\"preserved\":true}";
+        writeText(target.getLegacyDataFile(), legacyBytes);
+        JsonPersistenceStore failingStore = new JsonPersistenceStore(
+                1000L,
+                10L,
+                file -> {
+                    if (file.equals(target.getLegacyDataFile())) {
+                        throw new IOException("deliberate legacy inspection failure");
+                    }
+                    return JsonPersistenceStore.probeFilePresence(file);
+                });
+
+        PersistenceException failure = assertThrows(
+                PersistenceException.class,
+                () -> failingStore.write(target, section("new", true)));
+
+        assertEquals(PersistenceException.Reason.IO_FAILURE, failure.getReason());
+        assertEquals("Write failed", failure.getMessage());
+        assertFalse(Files.exists(target.getDataFile()));
+        assertEquals(legacyBytes, readText(target.getLegacyDataFile()));
+    }
+
+    @Test
     void canonicalPrivateDataWinsAndLegacyDataIsNotTouched() throws Exception {
         ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
         Files.createDirectories(target.getDataFile().getParent());
         Files.createDirectories(target.getLegacyDataFile().getParent());
         writeText(target.getDataFile(), "{\"source\":\"canonical\"}");
         writeText(target.getLegacyDataFile(), "{\"source\":\"legacy\"}");
+        JsonPersistenceStore canonicalStore = new JsonPersistenceStore(
+                1000L,
+                10L,
+                file -> {
+                    if (file.equals(target.getLegacyDataFile())) {
+                        throw new IOException("legacy must not be inspected when canonical exists");
+                    }
+                    return JsonPersistenceStore.probeFilePresence(file);
+                });
 
-        assertEquals("canonical", store.readAll(target).get("source").getAsString());
+        assertEquals("canonical", canonicalStore.readAll(target).get("source").getAsString());
         assertTrue(Files.exists(target.getLegacyDataFile()));
         assertEquals("{\"source\":\"legacy\"}", readText(target.getLegacyDataFile()));
     }
@@ -156,6 +193,33 @@ class JsonPersistenceStoreTest {
             executor.shutdownNow();
         }
         assertTrue(Files.exists(target.getLegacyDataFile()));
+    }
+
+    @Test
+    void migrationPublicationCannotReplaceCanonicalThatAppearsAfterLockedRecheck()
+            throws Exception {
+        ResolvedPersistenceTarget target = target(PersistenceScope.PRIVATE, "readAll");
+        Files.createDirectories(target.getLegacyDataFile().getParent());
+        writeText(target.getLegacyDataFile(), "{\"source\":\"legacy\"}");
+        AtomicInteger legacyProbes = new AtomicInteger();
+        JsonPersistenceStore conflictingStore = new JsonPersistenceStore(
+                1000L,
+                10L,
+                file -> {
+                    boolean present = JsonPersistenceStore.probeFilePresence(file);
+                    if (file.equals(target.getLegacyDataFile())
+                            && present
+                            && legacyProbes.incrementAndGet() == 2) {
+                        Files.createDirectories(target.getDataFile().getParent());
+                        writeText(target.getDataFile(), "{\"source\":\"canonical\"}");
+                    }
+                    return present;
+                });
+
+        assertThrows(PersistenceException.class, () -> conflictingStore.readAll(target));
+
+        assertEquals("{\"source\":\"canonical\"}", readText(target.getDataFile()));
+        assertEquals("{\"source\":\"legacy\"}", readText(target.getLegacyDataFile()));
     }
 
     @Test
@@ -475,7 +539,7 @@ class JsonPersistenceStoreTest {
                 () -> store.write(target, section("escaped", true)));
 
         assertEquals(PersistenceException.Reason.IO_FAILURE, exception.getReason());
-        assertFalse(Files.exists(outside.resolve("data/data.json")));
+        assertFalse(Files.exists(outside.resolve("data.json")));
     }
 
     @Test

@@ -40,23 +40,42 @@ final class JsonPersistenceStore extends PersistenceStore {
     private static final long DEFAULT_LOCK_TIMEOUT_MILLIS = 1000L;
     private static final long DEFAULT_LOCK_RETRY_MILLIS = 10L;
     private static final String LOCK_SUFFIX = ".lock";
+    private static final FilePresenceProbe DEFAULT_FILE_PRESENCE_PROBE =
+            new FilePresenceProbe() {
+                @Override
+                public boolean isPresent(Path file) throws IOException {
+                    return probeFilePresence(file);
+                }
+            };
 
     private final long lockTimeoutNanos;
     private final long lockRetryNanos;
+    private final FilePresenceProbe filePresenceProbe;
 
     JsonPersistenceStore() {
         this(DEFAULT_LOCK_TIMEOUT_MILLIS, DEFAULT_LOCK_RETRY_MILLIS);
     }
 
     JsonPersistenceStore(long lockTimeoutMillis, long lockRetryMillis) {
+        this(lockTimeoutMillis, lockRetryMillis, DEFAULT_FILE_PRESENCE_PROBE);
+    }
+
+    JsonPersistenceStore(
+            long lockTimeoutMillis,
+            long lockRetryMillis,
+            FilePresenceProbe filePresenceProbe) {
         if (lockTimeoutMillis < 0L) {
             throw new IllegalArgumentException("The persistence lock timeout must not be negative.");
         }
         if (lockRetryMillis <= 0L) {
             throw new IllegalArgumentException("The persistence lock retry interval must be positive.");
         }
+        if (filePresenceProbe == null) {
+            throw new NullPointerException("The file presence probe must not be null.");
+        }
         this.lockTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(lockTimeoutMillis);
         this.lockRetryNanos = TimeUnit.MILLISECONDS.toNanos(lockRetryMillis);
+        this.filePresenceProbe = filePresenceProbe;
     }
 
     JsonElement read(ResolvedPersistenceTarget target, String section)
@@ -139,6 +158,12 @@ final class JsonPersistenceStore extends PersistenceStore {
     private boolean modify(ResolvedPersistenceTarget target, RootModification modification)
             throws PersistenceException {
         Path dataFile = target.getDataFile();
+        try {
+            // Fail indeterminate legacy state before creating canonical directories or locks.
+            migrationRequired(target);
+        } catch (IOException | SecurityException exception) {
+            throw writeFailure(exception);
+        }
         Path dataDirectory = prepareDataDirectory(target);
         Path lockFile = lockFileFor(target);
         if (Files.isSymbolicLink(lockFile)) {
@@ -261,11 +286,12 @@ final class JsonPersistenceStore extends PersistenceStore {
 
     private void migratePrivateDataIfRequired(ResolvedPersistenceTarget target)
             throws PersistenceException {
-        if (target.getScope() != PersistenceScope.PRIVATE
-                || target.getLegacyDataFile() == null
-                || Files.exists(target.getDataFile(), LinkOption.NOFOLLOW_LINKS)
-                || !Files.exists(target.getLegacyDataFile(), LinkOption.NOFOLLOW_LINKS)) {
-            return;
+        try {
+            if (!migrationRequired(target)) {
+                return;
+            }
+        } catch (IOException | SecurityException exception) {
+            throw readFailure(exception);
         }
 
         Path dataDirectory = prepareDataDirectory(target);
@@ -286,19 +312,14 @@ final class JsonPersistenceStore extends PersistenceStore {
         }
     }
 
-    private static void migratePrivateDataWhileLocked(
+    private void migratePrivateDataWhileLocked(
             ResolvedPersistenceTarget target,
             Path dataDirectory) throws IOException, PersistenceException {
-        if (target.getScope() != PersistenceScope.PRIVATE
-                || target.getLegacyDataFile() == null
-                || Files.exists(target.getDataFile(), LinkOption.NOFOLLOW_LINKS)) {
+        if (!migrationRequired(target)) {
             return;
         }
 
         Path legacyDataFile = target.getLegacyDataFile();
-        if (!Files.exists(legacyDataFile, LinkOption.NOFOLLOW_LINKS)) {
-            return;
-        }
         validateLegacyDataPath(legacyDataFile);
 
         Path temporaryFile = null;
@@ -312,11 +333,14 @@ final class JsonPersistenceStore extends PersistenceStore {
                     legacyDataFile,
                     temporaryFile,
                     StandardCopyOption.REPLACE_EXISTING);
-            Files.move(
-                    temporaryFile,
-                    target.getDataFile(),
-                    StandardCopyOption.ATOMIC_MOVE);
+            Files.createLink(target.getDataFile(), temporaryFile);
             established = true;
+            try {
+                Files.delete(temporaryFile);
+                temporaryFile = null;
+            } catch (IOException | SecurityException ignored) {
+                // Canonical data is complete; temporary-name cleanup is best effort.
+            }
         } finally {
             if (!established && temporaryFile != null) {
                 try {
@@ -329,6 +353,31 @@ final class JsonPersistenceStore extends PersistenceStore {
 
         if (established) {
             removeLegacyDataAfterMigration(legacyDataFile);
+        }
+    }
+
+    private boolean migrationRequired(ResolvedPersistenceTarget target) throws IOException {
+        if (target.getScope() != PersistenceScope.PRIVATE
+                || target.getLegacyDataFile() == null) {
+            return false;
+        }
+        if (filePresenceProbe.isPresent(target.getDataFile())) {
+            return false;
+        }
+        return filePresenceProbe.isPresent(target.getLegacyDataFile());
+    }
+
+    static boolean probeFilePresence(Path file) throws IOException {
+        try {
+            Files.readAttributes(
+                    file,
+                    BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+            return true;
+        } catch (NoSuchFileException exception) {
+            return false;
+        } catch (SecurityException exception) {
+            throw new IOException("Persistence file presence could not be inspected.", exception);
         }
     }
 
@@ -567,5 +616,9 @@ final class JsonPersistenceStore extends PersistenceStore {
 
     private interface RootModification {
         boolean apply(JsonObject root);
+    }
+
+    interface FilePresenceProbe {
+        boolean isPresent(Path file) throws IOException;
     }
 }

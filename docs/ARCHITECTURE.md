@@ -129,12 +129,17 @@ canonical and legacy files in this order:
 3. If neither exists, the not-yet-created Private store belongs at the new
    canonical location.
 
-Migration uses the established bounded-locking and atomic-replacement
-integrity principles. It preserves the legacy file content, coordinates
-concurrent attempts, and rechecks canonical-file precedence before committing.
-The implementation uses the canonical `data.json.lock`, a byte-copy temporary
-file beside the canonical target, and an atomic non-replacing move; normal JSON
-validation then proceeds against the established canonical bytes.
+Migration uses bounded locking and complete-file publication to preserve
+integrity. It preserves the legacy file content, coordinates concurrent
+attempts, and rechecks canonical-file precedence before committing.
+The implementation uses the canonical `data.json.lock` to serialize migration
+with Mini Server persistence modifications and rechecks canonical precedence
+while holding that lock. It copies legacy bytes to a complete temporary file
+beside the canonical target, then atomically publishes that complete file
+through a new hard-link directory entry. Link creation cannot replace an
+existing canonical entry, so a target that appears even after the locked
+recheck remains authoritative. Normal JSON validation then proceeds against
+the established canonical bytes.
 The legacy file is removed only after the canonical file is safely established.
 Empty legacy directories may then be removed best-effort; cleanup failure is
 nonfatal after successful migration. A migration failure leaves legacy data
