@@ -12,7 +12,8 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.OptionalInt;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -83,8 +84,7 @@ public final class MiniServerStartup {
         FileChannel instanceChannel = null;
         FileLock instanceLock = null;
         HttpServer httpServer = null;
-        boolean statePublished = false;
-        boolean newInstanceCompleted = false;
+        RunningMiniServer ownedRunningServer = null;
 
         try {
             Files.createDirectories(runtimeDirectory);
@@ -114,29 +114,34 @@ public final class MiniServerStartup {
 
             stateStore.invalidate();
 
-            HttpHandler rootHandler = createRootHandler();
+            String stopToken = UUID.randomUUID().toString();
+            LocalStopHandler localStopHandler = new LocalStopHandler(stopToken);
+            HttpHandler rootHandler = createRootHandler(localStopHandler);
             InetAddress loopback = InetAddress.getByName(LOOPBACK_ADDRESS);
             httpServer = serverFactory.create(new InetSocketAddress(loopback, REQUESTED_PORT));
             httpServer.createContext("/", rootHandler);
             httpServer.start();
             validateActiveAddress(httpServer.getAddress(), loopback);
 
-            int activePort = httpServer.getAddress().getPort();
-            stateStore.writePort(activePort);
-            statePublished = true;
+            ownedRunningServer = new RunningMiniServer(
+                    httpServer,
+                    instanceLock,
+                    instanceChannel,
+                    stateStore);
+            localStopHandler.attach(ownedRunningServer);
+            httpServer = null;
+            instanceLock = null;
+            instanceChannel = null;
+
+            stateStore.writeState(ownedRunningServer.getPort(), stopToken);
 
             release(startupLock);
             startupLock = null;
             close(startupChannel);
             startupChannel = null;
 
-            RunningMiniServer runningServer =
-                    new RunningMiniServer(httpServer, instanceLock, instanceChannel);
-            StartupResult result = StartupResult.newInstance(runningServer);
-            httpServer = null;
-            instanceLock = null;
-            instanceChannel = null;
-            newInstanceCompleted = true;
+            StartupResult result = StartupResult.newInstance(ownedRunningServer);
+            ownedRunningServer = null;
             return result;
         } catch (StartupException exception) {
             throw exception;
@@ -146,15 +151,11 @@ public final class MiniServerStartup {
                             + ConsoleDiagnostics.failureSummary(exception),
                     exception);
         } finally {
+            if (ownedRunningServer != null) {
+                ownedRunningServer.close();
+            }
             if (httpServer != null) {
                 httpServer.stop(0);
-            }
-            if (statePublished && !newInstanceCompleted) {
-                try {
-                    stateStore.invalidate();
-                } catch (IOException ignored) {
-                    // The original startup failure remains the actionable error.
-                }
             }
             releaseQuietly(instanceLock);
             closeQuietly(instanceChannel);
@@ -177,14 +178,18 @@ public final class MiniServerStartup {
         return WebRootResolver.resolve();
     }
 
-    private HttpHandler createRootHandler() throws StartupException {
+    private HttpHandler createRootHandler(LocalStopHandler localStopHandler)
+            throws StartupException {
         try {
             Path webRoot = resolveWebRoot();
             StaticFileHandler staticFileHandler = new StaticFileHandler(webRoot);
             PersistenceApiHandler apiHandler = new PersistenceApiHandler(
                     new PersistenceTargetResolver(webRoot),
                     new JsonPersistenceStore());
-            return new RootRequestRouter(apiHandler, staticFileHandler);
+            return new RootRequestRouter(
+                    localStopHandler,
+                    apiHandler,
+                    staticFileHandler);
         } catch (IOException exception) {
             throw new StartupException("The Mini Server web root cannot be accessed.", exception);
         }
@@ -219,9 +224,9 @@ public final class MiniServerStartup {
 
         while (true) {
             try {
-                OptionalInt port = stateStore.readPort();
-                if (port.isPresent()) {
-                    return port.getAsInt();
+                Optional<RuntimeStateStore.State> state = stateStore.readState();
+                if (state.isPresent()) {
+                    return state.get().getPort();
                 }
             } catch (IOException exception) {
                 lastReadFailure = exception;

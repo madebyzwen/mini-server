@@ -6,7 +6,7 @@ Mini Server listens only on `127.0.0.1`, asks the operating system to select an 
 
 ## Current status
 
-The v1.0 implementation is complete through runtime distribution assembly. Final release-scope and Windows launcher verification remain pending; v1.0 has not been released.
+The v1.0 implementation includes the portable distribution, detached Windows start, and graceful local stop command. Final release-scope and real Windows verification remain pending; v1.0 has not been released.
 
 ## Requirements and startup
 
@@ -14,9 +14,9 @@ The v1.0 implementation is complete through runtime distribution assembly. Final
 - Microsoft Edge, the v1 target browser
 - No installer, administrator privileges, database, or separate web server
 
-Run `mvn clean package` to create the portable runtime ZIP in `target/`. Extract the single directory from that ZIP and double-click `start.bat`. The launcher uses the included thin `mini-server.jar` and runtime libraries from `lib/`; the Java application remains responsible for dynamic port selection, single-instance coordination, and Edge launch.
+Run `mvn clean package` to create the portable runtime ZIP in `target/`. Extract the single directory from that ZIP and double-click `start.bat`. It launches Mini Server detached through `javaw.exe` using the included thin `mini-server.jar` and runtime libraries from `lib/`, then closes without waiting for startup or browser confirmation. The Java application remains responsible for dynamic port selection, single-instance coordination, and Edge launch.
 
-If Edge cannot be opened, the console shows the valid local URL. Keep the console window open while Mini Server is required. Closing Edge does not stop the server.
+Closing Edge does not stop the server. A repeated `start.bat` reuses the active local instance and opens its existing dynamic-port URL. Double-click `stop.bat` to stop that instance gracefully through its authenticated local HTTP control route. Running `stop.bat` again is harmless.
 
 ## Applications and persistence
 
@@ -63,7 +63,7 @@ Mini Server lauscht ausschließlich auf `127.0.0.1`, lässt das Betriebssystem e
 
 ### Aktueller Stand
 
-Die v1.0-Implementierung umfasst nun auch die Zusammenstellung der Laufzeitdistribution. Die abschließende Prüfung des Release-Umfangs und des Windows-Starters steht noch aus; v1.0 wurde noch nicht veröffentlicht.
+Die v1.0-Implementierung umfasst die portable Laufzeitdistribution, den abgekoppelten Windows-Start und den kontrollierten lokalen Stoppbefehl. Die abschließende Prüfung des Release-Umfangs und die Prüfung unter Windows stehen noch aus; v1.0 wurde noch nicht veröffentlicht.
 
 ### Voraussetzungen und Start
 
@@ -71,9 +71,9 @@ Die v1.0-Implementierung umfasst nun auch die Zusammenstellung der Laufzeitdistr
 - Microsoft Edge als Zielbrowser für v1
 - Kein Installer, keine Administratorrechte, keine Datenbank und kein separater Webserver erforderlich
 
-`mvn clean package` erzeugt die portable Laufzeit-ZIP-Datei unter `target/`. Das enthaltene Verzeichnis vollständig entpacken und anschließend `start.bat` doppelklicken. Der Starter verwendet die enthaltene schlanke `mini-server.jar` und die Laufzeitbibliotheken unter `lib/`. Portauswahl, lokale Einzelinstanz-Koordination und Edge-Start verbleiben in der Java-Anwendung.
+`mvn clean package` erzeugt die portable Laufzeit-ZIP-Datei unter `target/`. Das enthaltene Verzeichnis vollständig entpacken und anschließend `start.bat` doppelklicken. Der Starter startet Mini Server abgekoppelt über `javaw.exe` mit der enthaltenen schlanken `mini-server.jar` und den Laufzeitbibliotheken unter `lib/` und schließt ohne auf eine Start- oder Browserbestätigung zu warten. Portauswahl, lokale Einzelinstanz-Koordination und Edge-Start verbleiben in der Java-Anwendung.
 
-Falls Edge nicht geöffnet werden kann, zeigt die Konsole die gültige lokale URL. Das Konsolenfenster muss geöffnet bleiben, solange Mini Server benötigt wird. Das Schließen von Edge beendet den Server nicht.
+Das Schließen von Edge beendet den Server nicht. Ein erneuter Aufruf von `start.bat` verwendet die bereits aktive lokale Instanz und öffnet deren URL mit dem vorhandenen dynamischen Port. `stop.bat` beendet diese Instanz kontrolliert über die authentifizierte lokale HTTP-Steuerungsroute. Ein weiterer Aufruf von `stop.bat` ist harmlos.
 
 ### Anwendungen und Persistenz
 

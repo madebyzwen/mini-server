@@ -17,16 +17,19 @@ public final class RunningMiniServer implements AutoCloseable {
     private final HttpServer httpServer;
     private final FileLock instanceLock;
     private final FileChannel instanceLockChannel;
+    private final RuntimeStateStore stateStore;
     private final AtomicBoolean closed = new AtomicBoolean();
     private final CountDownLatch termination = new CountDownLatch(1);
 
     RunningMiniServer(
             HttpServer httpServer,
             FileLock instanceLock,
-            FileChannel instanceLockChannel) {
+            FileChannel instanceLockChannel,
+            RuntimeStateStore stateStore) {
         this.httpServer = httpServer;
         this.instanceLock = instanceLock;
         this.instanceLockChannel = instanceLockChannel;
+        this.stateStore = stateStore;
     }
 
     public int getPort() {
@@ -55,6 +58,11 @@ public final class RunningMiniServer implements AutoCloseable {
             httpServer.stop(0);
         } finally {
             try {
+                stateStore.invalidate();
+            } catch (IOException | SecurityException ignored) {
+                // The lifetime lock still determines that the server has stopped.
+            }
+            try {
                 instanceLock.release();
             } catch (IOException ignored) {
                 // Closing the channel below also releases any lock it owns.
@@ -63,9 +71,8 @@ public final class RunningMiniServer implements AutoCloseable {
                 instanceLockChannel.close();
             } catch (IOException ignored) {
                 // The server is already stopped and no further recovery is possible here.
-            } finally {
-                termination.countDown();
             }
+            termination.countDown();
         }
     }
 }

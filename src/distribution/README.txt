@@ -14,11 +14,21 @@ Installation and startup
 No installer or administrator rights are normally required. Mini Server
 listens only on 127.0.0.1 and lets Windows select an available port.
 Microsoft Edge should open the example application automatically. If Edge
-cannot be opened, use the local URL shown in the console.
+cannot be opened, start.bat does not remain open to show that detached-process
+failure; startup and browser confirmation are intentionally not awaited.
 
-Keep the console window open while Mini Server is required. Closing Edge
-does not stop Mini Server; the Java process in the console remains the
-running server.
+The start window closes immediately while Mini Server continues in a detached
+javaw process. Closing Edge does not stop Mini Server. Double-clicking
+start.bat again reuses the already-running local instance and opens its active
+URL without starting a second server.
+
+Stopping Mini Server
+--------------------
+
+Double-click stop.bat to stop the active local Mini Server gracefully. The
+command uses a token stored only in the current user's local runtime state and
+sends an authenticated request to the existing loopback HTTP listener. Running
+stop.bat when Mini Server is already stopped is harmless.
 
 Applications and data
 ---------------------

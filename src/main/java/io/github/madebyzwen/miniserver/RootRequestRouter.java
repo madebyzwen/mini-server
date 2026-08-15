@@ -12,10 +12,15 @@ final class RootRequestRouter implements HttpHandler {
 
     private static final String API_COMPONENT = "api";
 
+    private final HttpHandler localStopHandler;
     private final HttpHandler apiHandler;
     private final HttpHandler staticFileHandler;
 
-    RootRequestRouter(HttpHandler apiHandler, HttpHandler staticFileHandler) {
+    RootRequestRouter(
+            HttpHandler localStopHandler,
+            HttpHandler apiHandler,
+            HttpHandler staticFileHandler) {
+        this.localStopHandler = localStopHandler;
         this.apiHandler = apiHandler;
         this.staticFileHandler = staticFileHandler;
     }
@@ -23,7 +28,9 @@ final class RootRequestRouter implements HttpHandler {
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         String rawPath = exchange.getRequestURI().getRawPath();
-        if (isApiRequest(rawPath)) {
+        if (LocalStopHandler.PATH.equals(rawPath)) {
+            localStopHandler.handle(exchange);
+        } else if (isApiRequest(rawPath)) {
             apiHandler.handle(exchange);
         } else {
             staticFileHandler.handle(exchange);

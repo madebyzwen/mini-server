@@ -37,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -76,6 +77,7 @@ class PersistenceHttpApiTest {
         server.createContext(
                 "/",
                 new RootRequestRouter(
+                        new LocalStopHandler(UUID.randomUUID().toString()),
                         new PersistenceApiHandler(resolver, store, diagnostics),
                         new StaticFileHandler(webRoot)));
         server.start();
@@ -706,6 +708,7 @@ class PersistenceHttpApiTest {
         server.createContext(
                 "/",
                 new RootRequestRouter(
+                        new LocalStopHandler(UUID.randomUUID().toString()),
                         new PersistenceApiHandler(
                                 targetResolver,
                                 persistenceStore,

@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -276,7 +277,9 @@ class MiniServerStartupTest {
         InetAddress loopback = InetAddress.getByName("127.0.0.1");
         try (ServerSocket reservedPort = new ServerSocket(0, 1, loopback)) {
             int stalePort = reservedPort.getLocalPort();
-            new RuntimeStateStore(runtimeDirectory).writePort(stalePort);
+            new RuntimeStateStore(runtimeDirectory).writeState(
+                    stalePort,
+                    UUID.randomUUID().toString());
 
             StartupResult result = own(
                     startup(runtimeDirectory, NORMAL_SETTINGS, new RecordingServerFactory()).start());
@@ -412,6 +415,8 @@ class MiniServerStartupTest {
         first.close();
 
         assertTrue(canAcquire(runtimeDirectory.resolve(MiniServerStartup.INSTANCE_LOCK_FILE)));
+        assertFalse(Files.exists(
+                runtimeDirectory.resolve(MiniServerStartup.INSTANCE_STATE_FILE)));
 
         StartupResult second = own(startup.start());
 
@@ -460,7 +465,9 @@ class MiniServerStartupTest {
     void failedServerCreationLeavesNoPublishedStateOrOwnedLock() throws Exception {
         Path runtimeDirectory = temporaryDirectory.resolve("failure-cleanup");
         Files.createDirectories(runtimeDirectory);
-        new RuntimeStateStore(runtimeDirectory).writePort(12345);
+        new RuntimeStateStore(runtimeDirectory).writeState(
+                12345,
+                UUID.randomUUID().toString());
         MiniServerStartup.ServerFactory failingFactory = address -> {
             throw new IOException("deliberate test failure");
         };

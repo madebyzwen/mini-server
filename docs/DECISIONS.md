@@ -1317,7 +1317,9 @@ If another local process owns instance.lock, the startup attempt does not start 
 
 Startup races and lock acquisition use bounded, deterministic waits. A state file alone is never proof that an instance is active. Failure to obtain valid state for an actively locked instance fails cleanly rather than starting a competing local process.
 
-The Mini Server process remains independent of Microsoft Edge, and v1 provides no browser-accessible HTTP shutdown endpoint.
+The Mini Server process remains independent of Microsoft Edge. Graceful local
+shutdown uses the authenticated internal route defined by D-024; no anonymous
+application shutdown operation is provided.
 
 ### Rationale
 
@@ -1592,6 +1594,33 @@ Shared persistence may be written by server processes on different computers, an
 - A lock failure never reports success and does not intentionally damage existing data.
 - Reads remain lock-free and rely on atomic replacement for complete-file visibility.
 - The project does not introduce a database, transaction service, or large logging/recovery subsystem.
+
+---
+
+## D-024 — Detached Windows Start and Authenticated Local Stop
+
+### Decision
+
+`start.bat` launches the existing `MiniServer` entry point through `javaw.exe`
+and exits without waiting for startup or Edge confirmation. `stop.bat` invokes
+`MiniServer stop` through `java.exe`. Both use quoted absolute classpath paths
+derived from `%~dp0` and do not change the command working directory.
+
+Each new server stores an unpredictable stop token beside its active port in
+local `instance.json`. The stop command sends that token in the
+`X-MiniServer-Token` header to `POST /__miniserver/stop` on the existing
+loopback HTTP listener, then waits boundedly for `instance.lock` to be released.
+The response is completed before `RunningMiniServer.close()` runs asynchronously.
+No second control listener, PID file, launcher handshake, or process supervisor
+is used.
+
+### Consequences
+
+- The start CMD window does not remain attached to the server lifetime.
+- Repeated starts continue to reuse the active dynamic port through D-020.
+- Missing or incorrect stop tokens cannot trigger shutdown.
+- Runtime control state remains local to the current user/computer context.
+- Exact simultaneous start/stop transaction ordering is not guaranteed.
 
 ---
 

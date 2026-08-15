@@ -53,6 +53,7 @@ required_entries=(
     "$distribution_root/www/example/index.html"
     "$distribution_root/miniweb-template.zip"
     "$distribution_root/start.bat"
+    "$distribution_root/stop.bat"
     "$distribution_root/README.txt"
 )
 
@@ -62,6 +63,31 @@ for required in "${required_entries[@]}"; do
         exit 1
     fi
 done
+
+start_launcher=$(unzip -p "$archive" "$distribution_root/start.bat")
+stop_launcher=$(unzip -p "$archive" "$distribution_root/stop.bat")
+
+if grep -Eiq '(^|[[:space:]])(pushd|popd)([[:space:]]|$)' \
+        <<< "$start_launcher$stop_launcher"; then
+    echo "Distribution BAT launchers must not depend on pushd or popd." >&2
+    exit 1
+fi
+if ! grep -Fq \
+        'start "" javaw -cp "%~dp0mini-server.jar;%~dp0lib\*" io.github.madebyzwen.miniserver.MiniServer' \
+        <<< "$start_launcher"; then
+    echo "start.bat must launch Mini Server through javaw with absolute batch-relative paths." >&2
+    exit 1
+fi
+if grep -Eiq '(^|[[:space:]])java(.exe)?[[:space:]]+-cp' <<< "$start_launcher"; then
+    echo "start.bat must not run the server synchronously through java.exe." >&2
+    exit 1
+fi
+if ! grep -Fq \
+        'java -cp "%~dp0mini-server.jar;%~dp0lib\*" io.github.madebyzwen.miniserver.MiniServer stop' \
+        <<< "$stop_launcher"; then
+    echo "stop.bat must invoke the Mini Server stop command with absolute batch-relative paths." >&2
+    exit 1
+fi
 
 runtime_dependency_count=0
 for entry in "${entries[@]}"; do

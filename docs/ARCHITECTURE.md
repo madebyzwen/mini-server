@@ -29,7 +29,8 @@ A representative distribution is:
     <installation-root>\
     ├── mini-server.jar
     ├── miniweb-template.zip
-    ├── startup files
+    ├── start.bat
+    ├── stop.bat
     └── www\
         ├── _shared\
         │   └── mini-api.js
@@ -58,7 +59,8 @@ This state describes only the local loopback server:
 
 - `startup.lock` serializes concurrent local startup attempts.
 - `instance.lock` is held by the active local server process for its lifetime and is authoritative for whether that instance is active.
-- `instance.json` publishes repeated-start information, including the dynamically assigned local TCP port.
+- `instance.json` publishes the dynamically assigned local TCP port and the
+  per-instance stop token.
 
 These files are never served as web content and are never coordinated through a shared installation.
 
@@ -356,6 +358,12 @@ The loopback server is local even when its installation and shared persistence a
 
 Mini Server permits one running server instance per local user/computer context. Different computers do not block each other merely because they use the same installation.
 
+`start.bat` launches the existing `MiniServer` entry point through `javaw.exe`
+using quoted absolute paths based on the batch-file directory. It exits without
+waiting for startup or browser confirmation. The detached process continues only
+when it owns the active server; a repeated-start process opens the existing URL
+and exits naturally.
+
 ### First Local Start
 
 A startup attempt:
@@ -366,9 +374,9 @@ A startup attempt:
 4. Obtains and retains `instance.lock`.
 5. Binds the HTTP server to `127.0.0.1` using port `0`.
 6. Reads the operating-system-assigned port and confirms readiness.
-7. Publishes the port in local `instance.json`.
-8. Opens Microsoft Edge with the configured start target.
-9. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
+7. Publishes the port and an unpredictable per-instance stop token in local `instance.json`.
+8. Releases `startup.lock` while retaining `instance.lock` for the server lifetime.
+9. Opens Microsoft Edge with the configured start target.
 
 ### Repeated Local Start
 
@@ -388,7 +396,18 @@ Cross-computer persistence safety is provided by the short-lived persistence fil
 
 The Java server runs independently of Microsoft Edge. Closing browser tabs or windows does not intentionally stop it.
 
-The process remains active until it terminates. The operating system then releases its process-owned `instance.lock`. Mini Server v1 exposes no browser-accessible HTTP shutdown endpoint.
+`stop.bat` invokes `MiniServer stop` through normal `java.exe`. The command reads
+the local port and token, then sends `POST /__miniserver/stop` with the token in
+the `X-MiniServer-Token` header to the existing loopback HTTP listener. The
+internal route has no CORS support, rejects missing or incorrect tokens, and is
+handled before application API/static routing. After completing the successful
+HTTP response, it asynchronously calls `RunningMiniServer.close()`, which stops
+the listener, invalidates `instance.json`, releases `instance.lock`, and ends the
+server lifetime. No second control listener exists.
+
+The normal startup and repeated-start locks remain authoritative. Transactionally
+perfect behavior for start and stop commands launched at the exact same instant
+is intentionally outside this small launcher design.
 
 Detailed startup behavior is defined by D-020 and REQ-006.
 

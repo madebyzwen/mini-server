@@ -1380,6 +1380,41 @@ Acceptance:
 
 ---
 
+## T-014.3 — Add Detached Windows Start and Graceful Stop
+
+Status: Done
+
+Related requirements:
+
+- REQ-002
+- REQ-006
+- REQ-007
+- REQ-008
+
+Description:
+
+Launch the existing Mini Server lifecycle through detached `javaw.exe` and add
+an authenticated `stop.bat` command that uses the active loopback HTTP listener.
+
+Acceptance:
+
+- `start.bat` launches `MiniServer` through `javaw.exe` and exits immediately.
+- Both BAT files use quoted `%~dp0`-based classpaths without `pushd` or `popd`.
+- Repeated starts continue to reuse the active dynamic port without creating a
+  second HTTP server.
+- `instance.json` stores the active port and one unpredictable per-instance stop token.
+- `POST /__miniserver/stop` rejects non-POST and unauthenticated requests.
+- An authenticated stop completes its response before calling
+  `RunningMiniServer.close()` asynchronously on the existing listener.
+- Successful shutdown removes active state, releases `instance.lock`, and permits
+  a fresh dynamic-port startup.
+- Stopping an inactive server is harmless and stop waits are bounded.
+- The distribution contains CRLF `start.bat` and `stop.bat` launchers.
+- Java, MiniApi, package, and distribution verification pass with Java 8-compatible bytecode.
+- Real Windows launcher behavior remains part of T-014 final verification.
+
+---
+
 ## T-014 — Verify Initial Release Scope
 
 Status: Planned
@@ -1430,6 +1465,7 @@ T-012
 T-013
 T-014.1
 T-014.2
+T-014.3
 T-014
 
 The order may be adjusted when technically useful, but requirement dependencies must remain respected.
