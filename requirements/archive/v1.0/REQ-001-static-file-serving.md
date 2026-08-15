@@ -10,7 +10,7 @@ Static File Serving
 
 ## Status
 
-Active
+Released
 
 ## Purpose
 

@@ -10,7 +10,7 @@ Startup, Browser Launch, and Server Lifetime
 
 ## Status
 
-Active
+Released
 
 ## Purpose
 

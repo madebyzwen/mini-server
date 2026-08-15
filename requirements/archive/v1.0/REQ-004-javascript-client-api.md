@@ -10,7 +10,7 @@ JavaScript Client API
 
 ## Status
 
-Active
+Released
 
 ## Purpose
 

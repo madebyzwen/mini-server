@@ -10,7 +10,7 @@ Error Handling and File Permissions
 
 ## Status
 
-Active
+Released
 
 ## Purpose
 

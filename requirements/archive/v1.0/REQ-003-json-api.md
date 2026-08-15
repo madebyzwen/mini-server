@@ -10,7 +10,7 @@ JSON Persistence API
 
 ## Status
 
-Active
+Released
 
 ## Purpose
 

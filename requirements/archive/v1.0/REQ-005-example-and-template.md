@@ -10,7 +10,7 @@ Example Application and Template Package
 
 ## Status
 
-Active
+Released
 
 ## Purpose
 

@@ -10,7 +10,7 @@ Runtime and Distribution
 
 ## Status
 
-Active
+Released
 
 ## Purpose
 

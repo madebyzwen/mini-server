@@ -2,9 +2,7 @@
 
 This document is the central index for project requirements.
 
-It provides a compact overview of the current requirement state without requiring all individual requirement documents to be read.
-
-The detailed requirement descriptions are stored in the corresponding requirement directories.
+It provides a compact overview of the current requirement state without requiring all individual requirement documents to be read. Detailed requirement descriptions are stored in the corresponding requirement directories.
 
 ---
 
@@ -16,67 +14,41 @@ Requirements are organized into the following areas:
 
 Location:
 
+```text
 requirements/active/
+```
 
-Contains approved requirements that are part of the current implementation scope.
-
-Active requirements are binding for ongoing development.
+Contains approved requirements that are part of the current implementation scope. Active requirements are binding for ongoing development.
 
 ### Backlog
 
 Location:
 
+```text
 requirements/backlog/
+```
 
-Contains ideas or requirements that may be implemented later but are not currently approved for implementation.
-
-Backlog items must not be treated as active requirements.
+Contains ideas or requirements that may be implemented later but are not currently approved. Backlog items must not be treated as active requirements.
 
 ### Archive
 
 Location:
 
+```text
 requirements/archive/
+```
 
-Contains requirements that were completed as part of a released version or were otherwise closed.
+Contains requirements completed as part of a released version or otherwise closed. Archived requirements preserve historical project state and should normally not be modified after release.
 
-Archived requirements represent historical project state and should normally not be modified after release.
-
-If released behavior needs to change, create a new requirement instead of rewriting the archived requirement.
+If released behavior needs to change, create a new requirement instead of rewriting an archived requirement.
 
 ---
 
 ## Active Requirements
 
-The following requirements are approved for the initial v1.0 implementation:
+There are currently no approved active requirements.
 
-- REQ-001 — Static File Serving
-  - `active/REQ-001-static-file-serving.md`
-
-- REQ-002 — Dynamic Port Allocation
-  - `active/REQ-002-dynamic-port-allocation.md`
-
-- REQ-003 — JSON Persistence API
-  - `active/REQ-003-json-api.md`
-
-- REQ-004 — JavaScript Client API
-  - `active/REQ-004-javascript-client-api.md`
-
-- REQ-005 — Example Application and Template Package
-  - `active/REQ-005-example-and-template.md`
-
-- REQ-006 — Startup, Browser Launch, and Server Lifetime
-  - `active/REQ-006-startup-and-browser-launch.md`
-
-- REQ-007 — Error Handling and File Permissions
-  - `active/REQ-007-error-handling-and-file-permissions.md`
-
-- REQ-008 — Runtime and Distribution
-  - `active/REQ-008-runtime-and-distribution.md`
-
-Implementation tasks derived from these requirements are maintained in:
-
-tasks/ACTIVE.md
+Mini Server v1.1 is in planning. Planning notes and roadmap candidates do not become binding until they are explicitly approved and placed in `requirements/active/`.
 
 ---
 
@@ -88,13 +60,24 @@ No backlog requirement documents have been created yet.
 
 ## Archived Requirements
 
-No requirements have been archived yet.
+REQ-001 through REQ-008 were released as Mini Server v1.0.0 and are archived in `requirements/archive/v1.0/`:
 
-The planned archive location for the first release is:
-
-requirements/archive/v1.0/
-
-Requirements must only be moved there after version 1.0 has actually been released.
+- REQ-001 — Static File Serving
+  - `archive/v1.0/REQ-001-static-file-serving.md`
+- REQ-002 — Dynamic Port Allocation
+  - `archive/v1.0/REQ-002-dynamic-port-allocation.md`
+- REQ-003 — JSON Persistence API
+  - `archive/v1.0/REQ-003-json-api.md`
+- REQ-004 — JavaScript Client API
+  - `archive/v1.0/REQ-004-javascript-client-api.md`
+- REQ-005 — Example Application and Template Package
+  - `archive/v1.0/REQ-005-example-and-template.md`
+- REQ-006 — Startup, Browser Launch, and Server Lifetime
+  - `archive/v1.0/REQ-006-startup-and-browser-launch.md`
+- REQ-007 — Error Handling and File Permissions
+  - `archive/v1.0/REQ-007-error-handling-and-file-permissions.md`
+- REQ-008 — Runtime and Distribution
+  - `archive/v1.0/REQ-008-runtime-and-distribution.md`
 
 ---
 
@@ -104,15 +87,19 @@ Requirement documents use a stable identifier and a short descriptive name.
 
 Format:
 
+```text
 REQ-<number>-<short-description>.md
+```
 
 Examples:
 
+```text
 REQ-001-static-file-serving.md
 REQ-002-dynamic-port-allocation.md
 REQ-003-json-api.md
+```
 
-Requirement identifiers must not be reused.
+Requirement identifiers must never be reused.
 
 ---
 
@@ -131,9 +118,7 @@ Each requirement should contain at least:
 - Related tasks or a reference to the task tracker
 - Target release
 
-Requirements describe what the system must provide.
-
-Detailed implementation choices should normally remain in architecture or decision documents unless they are themselves part of the requirement.
+Requirements describe what the system must provide. Detailed implementation choices should normally remain in architecture or decision documents unless they are themselves part of the requirement.
 
 ---
 
@@ -141,22 +126,18 @@ Detailed implementation choices should normally remain in architecture or decisi
 
 The normal requirement lifecycle is:
 
+```text
 Idea
 → Backlog
 → Active
 → Implemented
 → Released
 → Archived
+```
 
 A requirement should only be moved to Active when it has been sufficiently defined and approved for implementation.
 
-When a release is completed, fulfilled requirements should be moved into the corresponding release archive directory.
-
-Example:
-
-requirements/archive/v1.0/
-
-This index must be updated whenever the status or location of a requirement changes.
+When a release is completed, fulfilled requirements should be moved into the corresponding release archive directory. This index must be updated whenever the status or location of a requirement changes.
 
 ---
 

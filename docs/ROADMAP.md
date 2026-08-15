@@ -10,23 +10,16 @@ They are not approved requirements unless they are explicitly moved into the req
 
 ## Current Focus
 
-The current focus is the first functional Java implementation of Mini Server.
+Mini Server v1.0.0 has been released. The current focus is planning for v1.1.
 
-The initial version should establish the core foundation:
+Current planning candidates include:
 
-- Local web server
-- Static file serving from the `www` root
-- Support for multiple independent web applications
-- Central JSON persistence API
-- Explicit shared and private per-application JSON data storage
-- Shared `mini-api.js` client library
-- Example application
-- Reusable template package distributed as `miniweb-template.zip`
-- Automatic allocation of an available local port
-- Automatic browser launch
-- Shared/network installation support with local per-user/computer runtime coordination
+- Using the Windows default browser instead of selecting Microsoft Edge directly
+- Optionally configuring which existing Mini Server applications are opened automatically at startup
 
-The detailed scope of the first release is defined by the active requirements, not by this roadmap.
+These candidates are described in `docs/notes/V1.1-DEFAULT-BROWSER.md` and `docs/notes/V1.1-START-SITES.md`. They are non-binding planning material, not approved requirements or implementation work.
+
+The detailed scope of a future release will be defined by approved requirements, not by this roadmap.
 
 ---
 
@@ -91,9 +84,9 @@ Possible improvements for developers include:
 
 ### Distribution and Packaging
 
-Version 1.0 is intended to provide a compact distribution that can be copied to the target Windows system without requiring a traditional system-wide installer.
+Version 1.0 established a compact distribution that can be copied to the target Windows system without requiring a traditional system-wide installer.
 
-The distribution goals include:
+The released distribution provides:
 
 - Minimal installation effort
 - Clear Java 8 runtime requirements
