@@ -33,6 +33,12 @@
             <fileMode>0644</fileMode>
         </file>
         <file>
+            <source>${project.basedir}/config/start-sites.txt</source>
+            <outputDirectory>config</outputDirectory>
+            <destName>start-sites.txt</destName>
+            <fileMode>0644</fileMode>
+        </file>
+        <file>
             <source>${project.build.directory}/miniweb-template.zip</source>
             <outputDirectory>/</outputDirectory>
             <destName>miniweb-template.zip</destName>

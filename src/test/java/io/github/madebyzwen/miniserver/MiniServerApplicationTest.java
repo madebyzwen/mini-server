@@ -110,6 +110,33 @@ class MiniServerApplicationTest {
     }
 
     @Test
+    void evaluatesStartSitesOnlyAfterStartupPublishesReadyState() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("provider-after-startup");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
+        RecordingOutput output = new RecordingOutput();
+        AtomicInteger providerCalls = new AtomicInteger();
+        StartSiteProvider provider = () -> {
+            providerCalls.incrementAndGet();
+            assertTrue(new RuntimeStateStore(runtimeDirectory).readPort().isPresent());
+            return Collections.singletonList("example");
+        };
+
+        StartupResult result = own(new MiniServerApplication(
+                startup(runtimeDirectory, serverFactory),
+                browserLauncher,
+                provider,
+                output.standard,
+                output.error).start());
+
+        assertEquals(1, providerCalls.get());
+        assertEquals(
+                Collections.singletonList(
+                        "http://127.0.0.1:" + result.getPort() + "/example/"),
+                browserLauncher.urls);
+    }
+
+    @Test
     void repeatedStartLaunchesExistingPortWithoutCreatingAnotherServer() throws Exception {
         Path runtimeDirectory = temporaryDirectory.resolve("repeated-instance");
         CountingServerFactory serverFactory = new CountingServerFactory();
@@ -134,6 +161,75 @@ class MiniServerApplicationTest {
                 browserLauncher.urls.get(1));
         assertTrue(first.getRunningServer().isRunning());
         assertListenerReachable(first.getPort());
+    }
+
+    @Test
+    void rereadsSharedConfigurationOnEveryStartUsingTheExistingPort() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("shared-reread");
+        Path sharedConfiguration = temporaryDirectory.resolve("shared-start-sites.txt");
+        Path privateConfiguration = temporaryDirectory.resolve("missing-private.txt");
+        createApplication("first");
+        createApplication("second");
+        writeLines(sharedConfiguration, "first", "second");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
+        RecordingOutput output = new RecordingOutput();
+        MiniServerApplication application = new MiniServerApplication(
+                startup(runtimeDirectory, serverFactory),
+                browserLauncher,
+                new ConfiguredStartSiteProvider(
+                        webRoot,
+                        sharedConfiguration,
+                        privateConfiguration),
+                output.standard,
+                output.error);
+
+        StartupResult first = own(application.start());
+        writeLines(sharedConfiguration, "second");
+        StartupResult repeated = own(application.start());
+
+        String origin = "http://127.0.0.1:" + first.getPort();
+        assertTrue(repeated.isExistingInstance());
+        assertEquals(first.getPort(), repeated.getPort());
+        assertEquals(1, serverFactory.creationCount.get());
+        assertEquals(
+                Arrays.asList(origin + "/first/", origin + "/second/", origin + "/second/"),
+                browserLauncher.urls);
+    }
+
+    @Test
+    void rereadsPrivateConfigurationOnEveryStartUsingTheExistingPort() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("private-reread");
+        Path sharedConfiguration = temporaryDirectory.resolve("shared-private-reread.txt");
+        Path privateConfiguration = temporaryDirectory.resolve("private-reread.txt");
+        createApplication("first");
+        createApplication("second");
+        writeLines(sharedConfiguration, "first", "second");
+        writeLines(privateConfiguration, "first");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
+        RecordingOutput output = new RecordingOutput();
+        MiniServerApplication application = new MiniServerApplication(
+                startup(runtimeDirectory, serverFactory),
+                browserLauncher,
+                new ConfiguredStartSiteProvider(
+                        webRoot,
+                        sharedConfiguration,
+                        privateConfiguration),
+                output.standard,
+                output.error);
+
+        StartupResult first = own(application.start());
+        writeLines(privateConfiguration, "second");
+        StartupResult repeated = own(application.start());
+
+        String origin = "http://127.0.0.1:" + first.getPort();
+        assertTrue(repeated.isExistingInstance());
+        assertEquals(first.getPort(), repeated.getPort());
+        assertEquals(1, serverFactory.creationCount.get());
+        assertEquals(
+                Arrays.asList(origin + "/first/", origin + "/second/"),
+                browserLauncher.urls);
     }
 
     @Test
@@ -192,6 +288,34 @@ class MiniServerApplicationTest {
     }
 
     @Test
+    void providerFailureAfterStartupOpensNothingAndLeavesServerStateValid() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("provider-failure");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
+        RecordingOutput output = new RecordingOutput();
+        StartSiteProvider failingProvider = () -> {
+            throw new IOException("deliberate configuration failure");
+        };
+
+        StartupResult result = own(new MiniServerApplication(
+                startup(runtimeDirectory, serverFactory),
+                browserLauncher,
+                failingProvider,
+                output.standard,
+                output.error).start());
+
+        assertTrue(result.isNewInstance());
+        assertTrue(result.getRunningServer().isRunning());
+        assertEquals(
+                result.getPort(),
+                new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
+        assertTrue(browserLauncher.urls.isEmpty());
+        assertTrue(output.errorText().contains(
+                "Start-site configuration could not be read."));
+        assertListenerReachable(result.getPort());
+    }
+
+    @Test
     void orderedMultipleTargetsUseTheSameActivePortInCallerOrder() throws Exception {
         Path runtimeDirectory = temporaryDirectory.resolve("multiple-targets");
         CountingServerFactory serverFactory = new CountingServerFactory();
@@ -202,7 +326,7 @@ class MiniServerApplicationTest {
                 runtimeDirectory,
                 serverFactory,
                 browserLauncher,
-                Arrays.asList("/first/", "/second/", "/third/"),
+                Arrays.asList("first", "second", "third"),
                 output).start());
 
         assertEquals(
@@ -233,7 +357,7 @@ class MiniServerApplicationTest {
                 runtimeDirectory,
                 serverFactory,
                 selectivelyFailingLauncher,
-                Arrays.asList("/first/", "/second/", "/third/"),
+                Arrays.asList("first", "second", "third"),
                 output).start());
 
         String origin = "http://127.0.0.1:" + result.getPort();
@@ -259,6 +383,7 @@ class MiniServerApplicationTest {
         };
         RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
         RecordingOutput output = new RecordingOutput();
+        AtomicInteger providerCalls = new AtomicInteger();
         MiniServerApplication application = new MiniServerApplication(
                 new MiniServerStartup(
                         runtimeDirectory,
@@ -267,7 +392,10 @@ class MiniServerApplicationTest {
                         failingFactory,
                         NO_OBSERVER),
                 browserLauncher,
-                MiniServerApplication.V1_START_TARGET,
+                () -> {
+                    providerCalls.incrementAndGet();
+                    return Collections.singletonList("example");
+                },
                 output.standard,
                 output.error);
 
@@ -276,6 +404,7 @@ class MiniServerApplicationTest {
         assertTrue(failure.getMessage().contains("IOException"));
         assertTrue(failure.getMessage().contains(failureDetail));
         assertTrue(browserLauncher.urls.isEmpty());
+        assertEquals(0, providerCalls.get());
         assertFalse(Files.exists(
                 runtimeDirectory.resolve(MiniServerStartup.INSTANCE_STATE_FILE)));
         assertTrue(output.standardText().isEmpty());
@@ -308,16 +437,10 @@ class MiniServerApplicationTest {
             CountingServerFactory serverFactory,
             BrowserLauncher browserLauncher,
             RecordingOutput output) throws Exception {
-        MiniServerStartup startup = new MiniServerStartup(
-                runtimeDirectory,
-                webRoot,
-                SETTINGS,
-                serverFactory,
-                NO_OBSERVER);
         return new MiniServerApplication(
-                startup,
+                startup(runtimeDirectory, serverFactory),
                 browserLauncher,
-                Collections.singletonList(MiniServerApplication.V1_START_TARGET),
+                () -> Collections.singletonList("example"),
                 output.standard,
                 output.error);
     }
@@ -328,18 +451,42 @@ class MiniServerApplicationTest {
             BrowserLauncher browserLauncher,
             Iterable<String> startTargets,
             RecordingOutput output) throws Exception {
-        MiniServerStartup startup = new MiniServerStartup(
+        return new MiniServerApplication(
+                startup(runtimeDirectory, serverFactory),
+                browserLauncher,
+                () -> {
+                    List<String> sites = new ArrayList<String>();
+                    for (String startTarget : startTargets) {
+                        sites.add(startTarget);
+                    }
+                    return sites;
+                },
+                output.standard,
+                output.error);
+    }
+
+    private MiniServerStartup startup(
+            Path runtimeDirectory,
+            CountingServerFactory serverFactory) {
+        return new MiniServerStartup(
                 runtimeDirectory,
                 webRoot,
                 SETTINGS,
                 serverFactory,
                 NO_OBSERVER);
-        return new MiniServerApplication(
-                startup,
-                browserLauncher,
-                startTargets,
-                output.standard,
-                output.error);
+    }
+
+    private Path createApplication(String name) throws IOException {
+        Path applicationDirectory = webRoot.resolve(name);
+        Files.createDirectories(applicationDirectory);
+        Files.write(
+                applicationDirectory.resolve("index.html"),
+                name.getBytes(StandardCharsets.UTF_8));
+        return applicationDirectory;
+    }
+
+    private static void writeLines(Path file, String... lines) throws IOException {
+        Files.write(file, Arrays.asList(lines), StandardCharsets.UTF_8);
     }
 
     private StartupResult own(StartupResult result) {

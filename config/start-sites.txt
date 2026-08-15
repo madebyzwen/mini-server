@@ -1,0 +1,2 @@
+# One first-level application name per line, in automatic opening order.
+example

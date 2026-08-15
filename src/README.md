@@ -43,7 +43,8 @@ Production source code is responsible for Mini Server runtime behavior such as:
 - JSON API handling
 - JSON persistence
 - Error handling and diagnostics
-- Microsoft Edge launch integration
+- Windows-default browser integration
+- Shared and Private start-site selection for automatic browser opening
 - Supporting utility functionality where required
 
 The server implementation must remain generic.
@@ -52,7 +53,7 @@ Application-specific business logic for individual hosted web applications must 
 
 ## Java Compatibility
 
-Mini Server v1.0 targets Java 8.
+Mini Server targets Java 8.
 
 Production source code must therefore remain compatible with the Java 8 language level and approved Java 8 runtime.
 
@@ -166,6 +167,26 @@ Runtime state is created and managed by the running Mini Server implementation.
 
 It is not source code and must not be committed.
 
+## Start-Site Configuration
+
+Shared automatic-opening approval is read from:
+
+    <installation-root>\config\start-sites.txt
+
+Optional current-user filtering is read independently from:
+
+    %APPDATA%\MiniServer\config\start-sites.txt
+
+The start-site provider rereads both levels after each successful first or
+repeated startup. It validates Shared entries against current first-level
+application directories below `www/`, then applies Private entries only as an
+inclusion set while preserving Shared order. Start-site names are encoded as
+single URL path segments before they are sent to the Windows-default browser
+integration.
+
+This configuration affects automatic browser opening only. It remains separate
+from runtime coordination and shared or private application persistence.
+
 ## Source Code Principles
 
 Source code should:
@@ -225,6 +246,6 @@ If implementation work reveals a missing or contradictory requirement, document 
 
 ## Current State
 
-The Maven source structure is defined by D-019.
-
-Implementation of the Mini Server Java source code will be performed later through Codex according to the active requirements, approved decisions, and implementation tasks.
+The Maven source tree implements the released v1.0 runtime plus the completed
+v1.1 default-browser and configurable-start-site tasks. Final v1.1 scope
+verification remains planned under T-017.

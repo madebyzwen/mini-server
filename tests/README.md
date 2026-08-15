@@ -72,6 +72,14 @@ Priority areas include:
 - Runtime state handling
 - Startup race behavior where practical
 - Server startup failures
+- UTF-8 Shared and Private start-site parsing
+- Start-site normalization, validation, deduplication, and unsafe-entry rejection
+- Shared application existence and filesystem-boundary validation
+- Private subset filtering with Shared canonical ordering
+- Missing, empty, and unreadable start-site configuration behavior
+- First-start and repeated-start configuration rereading with active-port reuse
+- Shared removal, re-addition, and current-user selection behavior
+- Safe start-site URL path-segment encoding
 
 ## Test Independence
 
@@ -221,6 +229,18 @@ They must not modify the developer's real local runtime directory or create runt
 
 Tests should verify that runtime state remains outside the installation/web root, is user/context scoped, and is not exposed by static serving.
 
+## Start-Site Tests
+
+Start-site tests use temporary Shared, Private, web-root, and runtime paths. They
+must not read or modify the developer's actual `%APPDATA%` configuration.
+
+Automated coverage verifies the common UTF-8 parser, unsafe-entry rejection,
+live Shared application validation, Private intersection behavior, Shared
+ordering, missing/empty/unreadable file semantics, URL encoding, nonfatal
+configuration failures, and rereading on repeated starts. Injectable file
+reading is used for deterministic unreadable-file tests rather than relying on
+operating-system permission changes.
+
 ## Java Compatibility
 
 Tests for the initial release must remain compatible with the project's Java 8 target.
@@ -243,6 +263,9 @@ Examples include:
 - Closing the selected browser without stopping Mini Server
 - User-visible startup diagnostics
 - Repeated desktop start using the active server URL and port
+- Shared and Private configuration behavior from a packaged Windows installation
+- User-visible diagnostics for unreadable Shared or Private configuration
+- Changes to both configuration levels across repeated `start.bat` invocations
 - Behavior during Windows logoff and shutdown where appropriate
 
 These checks are planned manual verification areas; this document does not claim they have already been performed. Results should be documented as part of release verification rather than represented as automated test results.
@@ -282,8 +305,7 @@ Do not claim that tests passed unless they were actually executed.
 
 ## Current State
 
-The automated Java test source location is defined as:
-
-    src/test/java/
-
-The concrete test framework and implementation will be created later through Codex as part of the implementation work.
+Automated Java tests are implemented below `src/test/java/` and run through the
+Maven build. Windows desktop integration and packaged-installation observations
+remain future manual release-verification areas; this document does not claim
+that those checks have been performed.

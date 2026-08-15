@@ -47,6 +47,8 @@ contains_entry() {
 required_entries=(
     "$distribution_root/mini-server.jar"
     "$distribution_root/lib/"
+    "$distribution_root/config/"
+    "$distribution_root/config/start-sites.txt"
     "$distribution_root/www/"
     "$distribution_root/www/_shared/mini-api.js"
     "$distribution_root/www/example/"
@@ -63,6 +65,39 @@ for required in "${required_entries[@]}"; do
         exit 1
     fi
 done
+
+shared_start_sites=$(unzip -p \
+    "$archive" \
+    "$distribution_root/config/start-sites.txt")
+if ! awk '
+    {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        if (line != "" && substr(line, 1, 1) != "#" && line == "example") {
+            found = 1
+        }
+    }
+    END { exit(found ? 0 : 1) }
+' <<< "$shared_start_sites"; then
+    echo "Shared start-site configuration must contain active entry: example" >&2
+    exit 1
+fi
+
+start_site_file_count=0
+for entry in "${entries[@]}"; do
+    if [[ "$entry" == */start-sites.txt ]]; then
+        start_site_file_count=$((start_site_file_count + 1))
+        if [[ "$entry" != "$distribution_root/config/start-sites.txt" ]]; then
+            echo "Distribution ZIP contains a pre-created non-Shared start-site file: $entry" >&2
+            exit 1
+        fi
+    fi
+done
+if (( start_site_file_count != 1 )); then
+    echo "Distribution ZIP must contain exactly one Shared start-site file." >&2
+    exit 1
+fi
 
 start_launcher=$(unzip -p "$archive" "$distribution_root/start.bat")
 stop_launcher=$(unzip -p "$archive" "$distribution_root/stop.bat")

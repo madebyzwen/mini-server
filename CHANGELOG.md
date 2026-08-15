@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Shared installation start-site approval with optional current-user Private filtering, preserving Shared ordering and applying changes on each start action.
+
 ### Changed
 
 - Automatic browser opening now delegates local Mini Server URLs to the Windows configured default HTTP handler instead of directly selecting Microsoft Edge.
