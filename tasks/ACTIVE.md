@@ -185,7 +185,7 @@ Acceptance:
 
 - `stop.bat` still stops the active instance gracefully.
 - Stopping an inactive server remains harmless.
-- Restarting after stop obtains a fresh dynamic port.
+- Restarting after stop requests port `0` and obtains the actual operating-system-assigned active port; the numeric port may coincide with a previous run.
 - Static serving and multiple applications continue to work.
 - Path-traversal protection remains effective.
 - Persistence directories remain protected from static serving.
