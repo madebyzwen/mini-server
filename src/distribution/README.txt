@@ -2,7 +2,8 @@ Mini Server
 ===========
 
 Mini Server is a portable local web server for Windows. It requires a
-Java 8 compatible runtime on PATH and targets Microsoft Edge for v1.0.
+Java 8 compatible runtime on PATH. Mini Server asks Windows to open local
+application URLs using the current user's configured default browser.
 
 Installation and startup
 ------------------------
@@ -13,14 +14,16 @@ Installation and startup
 
 No installer or administrator rights are normally required. Mini Server
 listens only on 127.0.0.1 and lets Windows select an available port.
-Microsoft Edge should open the example application automatically. If Edge
-cannot be opened, start.bat does not remain open to show that detached-process
-failure; startup and browser confirmation are intentionally not awaited.
+The Windows default browser should open the example application automatically.
+If the browser cannot be opened, Mini Server remains active and its runtime
+state remains valid. start.bat does not wait for startup or browser-opening
+confirmation because the server process is detached.
 
 The start window closes immediately while Mini Server continues in a detached
-javaw process. Closing Edge does not stop Mini Server. Double-clicking
-start.bat again reuses the already-running local instance and opens its active
-URL without starting a second server.
+javaw process. Closing the browser does not stop Mini Server. Double-clicking
+start.bat again reuses the already-running local instance and asks Windows to
+open its active URL without starting a second server. A changed Windows default
+browser is used on a later start action.
 
 Stopping Mini Server
 --------------------

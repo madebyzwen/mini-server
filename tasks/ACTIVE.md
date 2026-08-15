@@ -10,7 +10,7 @@ No v1.1 implementation work has started. The tasks below are Planned and must be
 
 ## T-015 — Implement Default Browser Launch
 
-Status: Planned
+Status: Done
 
 Related requirement:
 

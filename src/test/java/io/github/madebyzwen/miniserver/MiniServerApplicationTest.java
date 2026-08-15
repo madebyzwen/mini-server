@@ -19,6 +19,8 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -153,7 +155,7 @@ class MiniServerApplicationTest {
                 result.getPort(),
                 new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
         assertListenerReachable(result.getPort());
-        assertTrue(output.errorText().contains("Microsoft Edge could not be opened."));
+        assertTrue(output.errorText().contains("The default browser could not be opened."));
         assertTrue(output.errorText().contains(expectedUrl));
     }
 
@@ -184,7 +186,68 @@ class MiniServerApplicationTest {
         assertArrayEquals(stateBeforeRepeatedStart, Files.readAllBytes(stateFile));
         assertTrue(first.getRunningServer().isRunning());
         assertListenerReachable(first.getPort());
+        assertTrue(repeatedOutput.errorText().contains(
+                "The default browser could not be opened."));
         assertTrue(repeatedOutput.errorText().contains(expectedUrl));
+    }
+
+    @Test
+    void orderedMultipleTargetsUseTheSameActivePortInCallerOrder() throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("multiple-targets");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingBrowserLauncher browserLauncher = new RecordingBrowserLauncher(false);
+        RecordingOutput output = new RecordingOutput();
+
+        StartupResult result = own(application(
+                runtimeDirectory,
+                serverFactory,
+                browserLauncher,
+                Arrays.asList("/first/", "/second/", "/third/"),
+                output).start());
+
+        assertEquals(
+                Arrays.asList(
+                        "http://127.0.0.1:" + result.getPort() + "/first/",
+                        "http://127.0.0.1:" + result.getPort() + "/second/",
+                        "http://127.0.0.1:" + result.getPort() + "/third/"),
+                browserLauncher.urls);
+        assertTrue(result.getRunningServer().isRunning());
+        assertListenerReachable(result.getPort());
+    }
+
+    @Test
+    void failureForOneTargetDoesNotPreventLaterTargetsOrInvalidateState()
+            throws Exception {
+        Path runtimeDirectory = temporaryDirectory.resolve("isolated-target-failure");
+        CountingServerFactory serverFactory = new CountingServerFactory();
+        RecordingOutput output = new RecordingOutput();
+        List<String> attemptedUrls = new ArrayList<String>();
+        BrowserLauncher selectivelyFailingLauncher = url -> {
+            attemptedUrls.add(url);
+            if (url.endsWith("/second/")) {
+                throw new IOException("deliberate middle URL failure");
+            }
+        };
+
+        StartupResult result = own(application(
+                runtimeDirectory,
+                serverFactory,
+                selectivelyFailingLauncher,
+                Arrays.asList("/first/", "/second/", "/third/"),
+                output).start());
+
+        String origin = "http://127.0.0.1:" + result.getPort();
+        assertEquals(
+                Arrays.asList(origin + "/first/", origin + "/second/", origin + "/third/"),
+                attemptedUrls);
+        assertTrue(output.errorText().contains(
+                "The default browser could not be opened."));
+        assertTrue(output.errorText().contains(origin + "/second/"));
+        assertEquals(
+                result.getPort(),
+                new RuntimeStateStore(runtimeDirectory).readPort().getAsInt());
+        assertTrue(result.getRunningServer().isRunning());
+        assertListenerReachable(result.getPort());
     }
 
     @Test
@@ -254,7 +317,27 @@ class MiniServerApplicationTest {
         return new MiniServerApplication(
                 startup,
                 browserLauncher,
-                MiniServerApplication.V1_START_TARGET,
+                Collections.singletonList(MiniServerApplication.V1_START_TARGET),
+                output.standard,
+                output.error);
+    }
+
+    private MiniServerApplication application(
+            Path runtimeDirectory,
+            CountingServerFactory serverFactory,
+            BrowserLauncher browserLauncher,
+            Iterable<String> startTargets,
+            RecordingOutput output) throws Exception {
+        MiniServerStartup startup = new MiniServerStartup(
+                runtimeDirectory,
+                webRoot,
+                SETTINGS,
+                serverFactory,
+                NO_OBSERVER);
+        return new MiniServerApplication(
+                startup,
+                browserLauncher,
+                startTargets,
                 output.standard,
                 output.error);
     }

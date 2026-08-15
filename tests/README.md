@@ -14,7 +14,7 @@ Automated tests should verify behavior defined by the active requirements and he
 
 Test coverage should focus on server behavior, API behavior, path handling, persistence, startup behavior, error handling, and other functionality that can be verified reliably.
 
-Manual checks may still be necessary for behavior that depends on the Windows desktop environment or Microsoft Edge.
+Manual checks may still be necessary for behavior that depends on the Windows desktop environment or its configured default browser.
 
 ## Java Test Source
 
@@ -235,15 +235,17 @@ Some behavior may require manual verification on the intended Windows target env
 
 Examples include:
 
-- Microsoft Edge launch
+- Windows default-browser launch through the configured HTTP URL handler
+- Respecting a changed Windows default browser on a later start action
 - Desktop shortcut or launcher behavior
-- Interaction with existing Edge instances
-- User-visible browser-launch failures
+- Interaction with existing default-browser instances
+- Browser-opening failure remaining nonfatal while exposing the active URL where practical
+- Closing the selected browser without stopping Mini Server
 - User-visible startup diagnostics
-- Repeated desktop start behavior with the real installed Edge browser
+- Repeated desktop start using the active server URL and port
 - Behavior during Windows logoff and shutdown where appropriate
 
-Manual verification results should be documented as part of release verification rather than represented as automated test results.
+These checks are planned manual verification areas; this document does not claim they have already been performed. Results should be documented as part of release verification rather than represented as automated test results.
 
 ## Test Execution
 

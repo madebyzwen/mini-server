@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Automatic browser opening now delegates local Mini Server URLs to the Windows configured default HTTP handler instead of directly selecting Microsoft Edge.
+
 ## [1.0.0] - 2026-08-15
 
 ### Added

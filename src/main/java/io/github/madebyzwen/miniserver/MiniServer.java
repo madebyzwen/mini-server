@@ -10,6 +10,7 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -48,8 +49,8 @@ public final class MiniServer {
         try {
             StartupResult result = new MiniServerApplication(
                     new MiniServerStartup(),
-                    new EdgeBrowserLauncher(),
-                    MiniServerApplication.V1_START_TARGET,
+                    new WindowsDefaultBrowserLauncher(),
+                    Collections.singletonList(MiniServerApplication.V1_START_TARGET),
                     System.out,
                     System.err).start();
             if (result.isExistingInstance()) {
