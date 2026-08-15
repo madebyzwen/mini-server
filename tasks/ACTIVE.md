@@ -1417,7 +1417,7 @@ Acceptance:
 
 ## T-014 — Verify Initial Release Scope
 
-Status: Planned
+Status: Done
 
 Related requirements:
 
@@ -1443,6 +1443,15 @@ Acceptance:
 - The template package can be extracted into a new application that works end to end.
 - The Java 8 target runtime has been verified.
 - The project is ready for release preparation only when all required criteria are satisfied.
+
+Verification:
+
+- Full v1.0 verification evidence is recorded in
+  `docs/notes/V1.0-RELEASE-VERIFICATION.md`.
+- REQ-001 through REQ-008 were reviewed against all 182 active acceptance criteria.
+- Automated tests, distribution verification, packaged example/template smoke testing,
+  Java 8 evidence, and manual Windows launcher verification passed.
+- No incomplete active v1.0 acceptance criterion is known.
 
 ---
 
