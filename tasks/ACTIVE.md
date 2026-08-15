@@ -6,7 +6,7 @@ This document records the current approved implementation work for Mini Server.
 
 Mini Server v1.0.0 has been released. The approved v1.1 scope is defined by REQ-009 and REQ-010.
 
-No v1.1 implementation work has started. The tasks below are Planned and must be implemented in order against the active requirements and approved decisions.
+T-015 has been completed. T-016 and T-017 remain Planned, and work continues in the approved order against the active requirements and approved decisions.
 
 ## T-015 — Implement Default Browser Launch
 
