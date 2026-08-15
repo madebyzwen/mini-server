@@ -189,7 +189,7 @@ If Mini Server is useful to you and you would like to support its continued deve
 
 ## License
 
-This repository does not currently include a license file.
+Mini Server is licensed under the [MIT License](LICENSE).
 
 [Back to language selection](#documentation-languages)
 
@@ -346,7 +346,7 @@ Wenn Mini Server für dich nützlich ist und du die Weiterentwicklung unterstüt
 
 ## Lizenz
 
-Dieses Repository enthält derzeit keine Lizenzdatei.
+Mini Server steht unter der [MIT-Lizenz](LICENSE).
 
 [Zurück zur Sprachauswahl](#documentation-languages)
 
